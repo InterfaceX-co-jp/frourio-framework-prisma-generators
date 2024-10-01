@@ -12,7 +12,6 @@
     "resolveJsonModule": true,
     "outDir": "./lib",
     "rootDir": "./src",
-    "typeRoots": ["src/types.ts"],
     "skipLibCheck": true,
     "strict": true
   },

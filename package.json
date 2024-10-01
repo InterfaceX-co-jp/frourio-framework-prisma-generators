@@ -2,8 +2,9 @@
   "name": "frourio-framework-prisma-generators",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
+    "typecheck": "tsc --noEmit",
+    "gen-example": "tsc && npx prisma generate",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -22,13 +23,17 @@
   },
   "homepage": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators#readme",
   "devDependencies": {
-    "@types/node": "^22.7.4",
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.1"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
     "@prisma/generator-helper": "^5.20.0",
     "@prisma/internals": "^5.20.0",
-    "prettier": "^3.3.3"
+    "change-case": "^5.4.4",
+    "prettier": "^3.3.3",
+    "tsc": "^2.0.4",
+    "typescript": "^5.6.2"
   }
 }
