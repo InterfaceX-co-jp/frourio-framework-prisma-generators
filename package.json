@@ -3,7 +3,7 @@
   "version": "1.0.5",
   "description": "",
   "bin": {
-    "frourio-framework-prisma-generators": "tsx lib/generators/model/generator.js"
+    "frourio-framework-prisma-model-generator": "lib/generators/model/generator.js"
   },
   "type": "commonjs",
   "scripts": {
