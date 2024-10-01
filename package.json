@@ -11,12 +11,24 @@
     "url": "git+https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators.git"
   },
   "keywords": [
-    "prisma"
+    "prisma",
+    "prisma-client",
+    "prisma-generators"
   ],
   "author": "mikana0918",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators/issues"
   },
-  "homepage": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators#readme"
+  "homepage": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators#readme",
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "@prisma/generator-helper": "^5.20.0",
+    "@prisma/internals": "^5.20.0",
+    "prettier": "^3.3.3"
+  }
 }
