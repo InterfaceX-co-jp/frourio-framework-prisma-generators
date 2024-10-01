@@ -3,7 +3,7 @@ START_TIME=$SECONDS
 
 echo "Buidling package..."
 rm -r lib
-tsc
+npm run generate
 rm -r package
 mkdir package
 
