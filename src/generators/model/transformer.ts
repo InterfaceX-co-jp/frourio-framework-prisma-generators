@@ -3,7 +3,7 @@ import type {
   ReadonlyDeep,
 } from "@prisma/generator-helper";
 import { writeFileSafely } from "../utils/writeFileSafely";
-import * as changeCase from "change-case";
+import * as changeCase from "change-case-all";
 
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];

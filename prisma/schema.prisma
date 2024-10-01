@@ -8,7 +8,7 @@ datasource db {
 }
 
 generator model {
-  provider = "tsx ./lib/generators/model/index.js"
+  provider = "node ./lib/generators/model/generator.js"
   output   = "./__generated__/model"
 }
 
