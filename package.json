@@ -4,8 +4,10 @@
   "description": "",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "gen-example": "tsc && npx prisma generate",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prisma:generate": "npx prisma generate",
+    "gen-example": "tsc && npm run prisma:generate",
+    "check-uncommitted": "git diff-index --quiet HEAD --",
+    "package:publish": "npm update && npm run check-uncommitted && ./package.sh && cd package && npm publish"
   },
   "repository": {
     "type": "git",
