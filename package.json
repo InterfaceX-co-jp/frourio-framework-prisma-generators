@@ -3,8 +3,9 @@
   "version": "1.0.4",
   "description": "",
   "bin": {
-    "frourio-framework-prisma-generators": "lib/generators/model/index.js"
+    "frourio-framework-prisma-generators": "tsx lib/generators/model/index.js"
   },
+  "type": "commonjs",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "generate": "tsc && npm run prisma:generate",
