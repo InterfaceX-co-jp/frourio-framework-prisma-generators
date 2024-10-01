@@ -2,6 +2,9 @@
   "name": "frourio-framework-prisma-generators",
   "version": "1.0.0",
   "description": "",
+  "bin": {
+    "frourio-framework-prisma-generators": "./lib/index.js"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "prisma:generate": "npx prisma generate",
