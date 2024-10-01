@@ -28,9 +28,7 @@ export default class Transformer {
       `import  { ${args.model.name}Model } from "../model/${args.model.name}.model";`,
     ];
 
-    return `import { 
-              ${[...new Set(imports)].filter((i) => i).join(", ")}
-            } from '@prisma/client';`;
+    return imports.join("\n");
   }
 
   private generateRepositoryInterface(args: { model: PrismaDMMF.Model }) {
