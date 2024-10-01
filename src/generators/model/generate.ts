@@ -10,10 +10,12 @@ export async function generate(options: GeneratorOptions) {
       models,
     });
 
-    setupOutputPath({
-      envValue: options.generator.output as EnvValue,
-      transformer: t,
-    });
+    if (options.generator.output) {
+      setupOutputPath({
+        envValue: options.generator.output as EnvValue,
+        transformer: t,
+      });
+    }
 
     await t.transform();
   } catch (e) {
