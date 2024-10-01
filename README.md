@@ -1,5 +1,9 @@
 # frourio-framework-prisma-generators
 
+## Requirements
+- prisma, @prisma/client@5.20.0
+  - both needs to be same version
+
 ## Install
 
 ```bash
