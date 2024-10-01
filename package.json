@@ -1,0 +1,22 @@
+{
+  "name": "frourio-framework-prisma-generators",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators.git"
+  },
+  "keywords": [
+    "prisma"
+  ],
+  "author": "mikana0918",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators/issues"
+  },
+  "homepage": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators#readme"
+}
