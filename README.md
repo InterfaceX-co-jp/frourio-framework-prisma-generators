@@ -10,6 +10,6 @@ npm install -D frourio-framework-prisma-generators
 // model generator
 generator frourio_framework_prisma_model_generator {
     provider = "frourio-framework-prisma-model-generator"
-    output   = "./__generated__/models"
+    output   = "__generated__/models"
 }
 ```
