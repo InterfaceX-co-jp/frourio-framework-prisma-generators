@@ -21,9 +21,7 @@ export default class Transformer {
     const imports = [
       `import { 
         PrismaClient,
-        Prisma${args.model.name}CreateInput, 
-        Prisma${args.model.name}UpdateInput, 
-        Prisma${args.model.name}WhereUniqueInput 
+        type Prisma
       } from "@prisma/client";`,
       `import  { ${args.model.name}Model } from "../model/${args.model.name}.model";`,
     ];
@@ -32,15 +30,55 @@ export default class Transformer {
   }
 
   private generateRepositoryInterface(args: { model: PrismaDMMF.Model }) {
+    const hasIdField = args.model.fields.find((el) => el.isId);
+
+    const interfaceMethodsRequiresId = [
+      `findOneById(args: { id: ${args.model.fields.find((el) => el.isId)} }): Promise<${args.model.name}Model>;`,
+    ];
+
+    const essentialIterfaceMethods = [
+      `create(args: { data: Prisma.${args.model.name}CreateInput }): Promise<${args.model.name}Model>;`,
+      `update(data: Prisma.${args.model.name}UpdateInput): Promise<${args.model.name}Model>;`,
+      `delete(where: Prisma.${args.model.name}WhereUniqueInput): Promise<void>;`,
+    ];
+
+    const interfaceMethods = [
+      ...(hasIdField ? interfaceMethodsRequiresId : []),
+      ...essentialIterfaceMethods,
+    ];
+
     return `
         export interface IBase${args.model.name}Repository {
-            create(args: { data: Prisma${args.model.name}CreateInput }): Promise<${args.model.name}Model>;
-            update(data: Prisma${args.model.name}UpdateInput): Promise<${args.model.name}Model>;
-            delete(where: Prisma${args.model.name}WhereUniqueInput): Promise<${args.model.name}Model>;
-            findMany(): Promise<Prisma${args.model.name}[]>;
-            findOne(where: Prisma${args.model.name}WhereUniqueInput): Promise<${args.model.name}Model>;
+            ${interfaceMethods.join("\n")}
         }
     `;
+  }
+
+  private generateRepositoryMethods(args: { model: PrismaDMMF.Model }) {
+    const hasIdField = args.model.fields.find((el) => el.isId);
+
+    const repositoryMethodsRequiresId = [
+      `
+      async findOneById(args: { id: ${args.model.fields.find((el) => el.isId)} }): Promise<${args.model.name}Model> {
+        const data = this._prisma.${args.model.name}.findUnique({
+          where: {
+            id: args.id,
+          },
+        });
+
+        return ${args.model.name}Model.fromPrismaValue({ self: data });
+      }
+    `,
+    ];
+
+    const essentialRepositoryMethods = [``];
+
+    const repositoryMethods = [
+      ...(hasIdField ? repositoryMethodsRequiresId : []),
+      ...essentialRepositoryMethods,
+    ];
+
+    return repositoryMethods.join("\n");
   }
 
   private _changeModelFieldsToCamelCase(args: { model: PrismaDMMF.Model }) {
@@ -60,9 +98,19 @@ export default class Transformer {
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
 
       writeFileSafely(
-        `${this._outputPath}/${model.name}.repository.ts`,
+        `${this._outputPath}/Base${model.name}.repository.ts`,
         `
           ${this.generateImportStatement({ model: camelCasedModel })}
+
+
+          export class Base${model.name}Repository implements IBase${model.name}Repository {
+              private readonly _prisma: PrismaClient;
+
+              constructor({ prisma }: { prisma: PrismaClient }) {
+                  this._prisma = prisma;
+              }
+
+          }
         `,
       );
     }
