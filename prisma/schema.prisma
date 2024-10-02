@@ -12,11 +12,6 @@ generator model {
   output   = "./__generated__/model"
 }
 
-generator repository {
-  provider = "node ./lib/generators/repository/generator.js"
-  output   = "./__generated__/repository"
-}
-
 model User {
   id    Int     @id @default(autoincrement())
   email String  @unique

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-import { generatorHandler } from "@prisma/generator-helper";
-import { generate } from "./generate";
+import { generatorHandler } from '@prisma/generator-helper';
+import { generate as generateDomainModel } from './generate';
 
 generatorHandler({
   onManifest() {
     return {
-      defaultOutput: "__generated__/repository",
-      prettyName: "[Frourio Framework]Model",
-      version: "1.0.0",
+      defaultOutput: '__generated__/models',
+      prettyName: '[Frourio Framework]Models',
+      version: '1.0.0',
     };
   },
-  onGenerate: generate,
+  onGenerate: generateDomainModel,
 });

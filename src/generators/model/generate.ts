@@ -6,18 +6,18 @@ export async function generate(options: GeneratorOptions) {
   try {
     const models = options.dmmf.datamodel.models;
 
-    const transformer = new Transformer({
+    const t = new Transformer({
       models,
     });
 
     if (options.generator.output) {
       setupOutputPath({
         envValue: options.generator.output as EnvValue,
-        transformer,
+        transformer: t,
       });
     }
 
-    await transformer.transform();
+    await t.transform();
   } catch (e) {
     console.error(e);
   }
