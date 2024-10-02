@@ -47,23 +47,32 @@ export default class Transformer {
       ...essentialIterfaceMethods,
     ];
 
-    return `
-        export interface IBase${args.model.name}Repository {
-            ${interfaceMethods.join("\n")}
-        }
-    `;
+    return interfaceMethods.join("\n");
   }
 
   private generateRepositoryMethods(args: { model: PrismaDMMF.Model }) {
+    const camelCasedModelName = changeCase.camelCase(args.model.name);
+    const relatedFields = args.model.fields.filter((el) => el.relationName);
+    console.log(relatedFields);
     const hasIdField = args.model.fields.find((el) => el.isId);
+
+    // TODO: nested include
+    const include = relatedFields.map((field) => {
+      return `${field.name}: true,`;
+    });
+
+    const includeStatement = relatedFields.length
+      ? `include: { ${include.join("\n")} }`
+      : "";
 
     const repositoryMethodsRequiresId = [
       `
       async findOneById(args: { id: ${args.model.fields.find((el) => el.isId)} }): Promise<${args.model.name}Model> {
-        const data = this._prisma.${args.model.name}.findUnique({
+        const data = this._prisma.${camelCasedModelName}.findUnique({
           where: {
             id: args.id,
           },
+          ${includeStatement},
         });
 
         return ${args.model.name}Model.fromPrismaValue({ self: data });
@@ -71,7 +80,33 @@ export default class Transformer {
     `,
     ];
 
-    const essentialRepositoryMethods = [``];
+    const essentialRepositoryMethods = [
+      `
+        async create(args: { data: Prisma.${args.model.name}CreateInput }): Promise<${args.model.name}Model> { 
+          const data = await this._prisma.${camelCasedModelName}.create({
+            data: args.data,
+          });
+
+          return ${args.model.name}Model.fromPrismaValue({ self: data });
+        }
+      `,
+      `
+        async update(data: Prisma.${args.model.name}UpdateInput): Promise<${args.model.name}Model> { 
+          const updatedData = await this._prisma.${camelCasedModelName}.update({
+            data,
+          });
+
+          return ${args.model.name}Model.fromPrismaValue({ self: updatedData });
+        }
+      `,
+      `
+        async delete(where: Prisma.${args.model.name}WhereUniqueInput): Promise<void> {
+          await this._prisma.${camelCasedModelName}.delete({
+            where,
+          });
+        }
+      `,
+    ];
 
     const repositoryMethods = [
       ...(hasIdField ? repositoryMethodsRequiresId : []),
@@ -102,6 +137,9 @@ export default class Transformer {
         `
           ${this.generateImportStatement({ model: camelCasedModel })}
 
+          export interface IBase${model.name}Repository {
+            ${this.generateRepositoryInterface({ model: camelCasedModel })}
+          }
 
           export class Base${model.name}Repository implements IBase${model.name}Repository {
               private readonly _prisma: PrismaClient;
@@ -110,6 +148,7 @@ export default class Transformer {
                   this._prisma = prisma;
               }
 
+              ${this.generateRepositoryMethods({ model: camelCasedModel })}
           }
         `,
       );
