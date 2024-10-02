@@ -6,7 +6,7 @@ generatorHandler({
   onManifest() {
     return {
       defaultOutput: "__generated__/repository",
-      prettyName: "[Frourio Framework]Model",
+      prettyName: "[Frourio Framework]Repository",
       version: "1.0.0",
     };
   },
