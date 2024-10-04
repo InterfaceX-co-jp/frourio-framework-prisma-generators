@@ -116,7 +116,7 @@ export default class Transformer {
               ${args.model.fields
                 .filter((field) => field.relationName)
                 .map((field) => {
-                  return `${changeCase.camelCase(field.name)}: Prisma${field.type}${field.isList ? "[]" : ""}`;
+                  return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: Prisma${field.type}${field.isList ? "[]" : ""}`;
                 })
                 .join(",\n")}
             }) {
