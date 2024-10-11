@@ -11,10 +11,9 @@ export async function generate(options: GeneratorOptions) {
     });
 
     if (options.generator.output) {
-      setupOutputPath({
-        envValue: options.generator.output as EnvValue,
-        transformer: t,
-      });
+      const parsedPath = parseEnvValue(options.generator.output as EnvValue);
+
+      t.setOutputPath({ path: parsedPath });
     }
 
     await t.transform();
@@ -22,12 +21,3 @@ export async function generate(options: GeneratorOptions) {
     console.error(e);
   }
 }
-
-const setupOutputPath = (args: {
-  envValue: EnvValue;
-  transformer: Transformer;
-}) => {
-  const parsed = parseEnvValue(args.envValue);
-
-  args.transformer.setOutputPath({ path: parsed });
-};
