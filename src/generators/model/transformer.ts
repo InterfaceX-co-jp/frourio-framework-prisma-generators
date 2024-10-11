@@ -95,7 +95,7 @@ export default class Transformer {
   }
 
   private generateModelConstructor(args: { model: PrismaDMMF.Model }) {
-    return `private constructor(args: {
+    return `constructor(args: {
             ${args.model.fields
               .map((field) => {
                 return this.renderKeyValueFieldStringFromDMMFField({ field });
