@@ -94,14 +94,18 @@ export default class Transformer {
       .join("\n  ");
   }
 
+  private generateModelConstructorType(args: { model: PrismaDMMF.Model }) {
+    return `{
+              ${args.model.fields
+                .map((field) => {
+                  return this.renderKeyValueFieldStringFromDMMFField({ field });
+                })
+                .join(";\n")}
+            }`;
+  }
+
   private generateModelConstructor(args: { model: PrismaDMMF.Model }) {
-    return `constructor(args: {
-            ${args.model.fields
-              .map((field) => {
-                return this.renderKeyValueFieldStringFromDMMFField({ field });
-              })
-              .join(";\n")}
-        }) {
+    return `constructor(args: ${args.model.name}ModelConstructorArgs) {
             ${args.model.fields
               .map((field) => {
                 return `this._${field.name} = args.${field.name};`;
@@ -110,8 +114,8 @@ export default class Transformer {
         }`;
   }
 
-  private generateStaticFromPrismaValue(args: { model: PrismaDMMF.Model }) {
-    return `static fromPrismaValue(args: {
+  private generateStaticFromPrismaValueType(args: { model: PrismaDMMF.Model }) {
+    return `{
               self: Prisma${args.model.name},
               ${args.model.fields
                 .filter((field) => field.relationName)
@@ -119,7 +123,11 @@ export default class Transformer {
                   return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: Prisma${field.type}${field.isList ? "[]" : ""}`;
                 })
                 .join(",\n")}
-            }) {
+            }`;
+  }
+
+  private generateStaticFromPrismaValue(args: { model: PrismaDMMF.Model }) {
+    return `static fromPrismaValue(args: ${args.model.name}ModelFromPrismaValueArgs) {
                 return new ${args.model.name}Model({
                     ${args.model.fields
                       .map((field) => {
@@ -176,6 +184,10 @@ export default class Transformer {
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
+
+          export interface ${model.name}ModelConstructorArgs ${this.generateModelConstructorType({ model: camelCasedModel })}
+
+          export interface ${model.name}ModelFromPrismaValueArgs ${this.generateStaticFromPrismaValueType({ model: camelCasedModel })}
 
           export class ${model.name}Model {
               ${this.generateModelFields({ model: camelCasedModel })}
