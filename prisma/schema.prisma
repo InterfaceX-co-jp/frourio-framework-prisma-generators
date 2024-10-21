@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = "file:./dev.db"
 }
 
@@ -16,6 +16,7 @@ model User {
   id    Int     @id @default(autoincrement())
   email String  @unique
   name  String?
+
   posts Post[]
   books Book[]
 }
@@ -32,17 +33,37 @@ model Post {
   authorId  Int?
   likes     BigInt
   bytes     Bytes
+
+  Polymorphic Polymorphic[]
 }
 
-/// @@Gen.model(hide: true)
 model Book {
   id       Int    @unique
   title    String
   author   User?  @relation(fields: [authorId], references: [id])
   authorId Int?
+
+  Polymorphic Polymorphic[]
 }
 
 model Map {
   key   String @id
   value String
+}
+
+enum PolymorphicRelationType {
+  A
+  B
+}
+
+model Polymorphic {
+  id Int @id @default(autoincrement())
+
+  value String
+  type  PolymorphicRelationType
+
+  polymorphicId Int
+
+  PolymorphicBook Book? @relation(fields: [polymorphicId], references: [id], map: "book_polymorphicId")
+  PolymorphicPost Post? @relation(fields: [polymorphicId], references: [id], map: "post_polymorphicId")
 }
