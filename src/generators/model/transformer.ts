@@ -185,9 +185,9 @@ export default class Transformer {
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
 
-          export interface ${model.name}ModelConstructorArgs ${this.generateModelConstructorType({ model: camelCasedModel })}
+          export type ${model.name}ModelConstructorArgs = ${this.generateModelConstructorType({ model: camelCasedModel })}
 
-          export interface ${model.name}ModelFromPrismaValueArgs ${this.generateStaticFromPrismaValueType({ model: camelCasedModel })}
+          export type ${model.name}ModelFromPrismaValueArgs = ${this.generateStaticFromPrismaValueType({ model: camelCasedModel })}
 
           export class ${model.name}Model {
               ${this.generateModelFields({ model: camelCasedModel })}
