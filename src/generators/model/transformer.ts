@@ -206,31 +206,35 @@ export default class Transformer {
   }
 
   private mapPrismaValueType(args: { field: PrismaDMMF.Field }) {
-    switch (args.field.type) {
-      case "String":
-        return "string";
-      case "Int":
-        return "number";
-      case "Boolean":
-        return "boolean";
-      case "DateTime":
-        return "Date";
-      case "Json":
-        return "Record<string, unknown>";
-      case "Float":
-        return "number";
-      case "Enum":
-        return "string";
-      case "Decimal":
-        return "number";
-      case "BigInt":
-        return "bigint";
-      case "Bytes":
-        return "Buffer";
-      case args.field.type:
-        return `Prisma${args.field.type}`;
-      default:
-        return "unknown";
-    }
+    const mappedType = () => {
+      switch (args.field.type) {
+        case "String":
+          return "string";
+        case "Int":
+          return "number";
+        case "Boolean":
+          return "boolean";
+        case "DateTime":
+          return "Date";
+        case "Json":
+          return "Record<string, unknown>";
+        case "Float":
+          return "number";
+        case "Enum":
+          return "string";
+        case "Decimal":
+          return "number";
+        case "BigInt":
+          return "bigint";
+        case "Bytes":
+          return "Buffer";
+        case args.field.type:
+          return `Prisma${args.field.type}`;
+        default:
+          return "unknown";
+      }
+    };
+
+    return args.field.isList ? `${mappedType()}[]` : mappedType();
   }
 }
