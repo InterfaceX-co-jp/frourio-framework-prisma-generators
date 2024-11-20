@@ -68,7 +68,9 @@ export default class Transformer {
                 return this.renderKeyValueFieldStringFromDMMFField({
                   field,
                   overrideValue:
-                    field.type === "DateTime" ? "string" : undefined, // DTO needs to be string for Date
+                    field.type === "DateTime"
+                      ? `string${field.isList ? "[]" : ""}`
+                      : undefined, // DTO needs to be string for Date
                 });
               })
               .join("\n  ")}
@@ -152,7 +154,9 @@ export default class Transformer {
                 ${args.model.fields
                   .map((field) => {
                     if (field.type === "DateTime") {
-                      return `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
+                      return field.isList
+                        ? `${field.name}: this._${field.name}.map((el => el.toISOString()))` // convert Date to string
+                        : `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
                     }
 
                     return `${field.name}: this._${field.name}`;
