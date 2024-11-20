@@ -2,6 +2,7 @@ import { EnvValue, GeneratorOptions } from "@prisma/generator-helper";
 import Transformer from "./transformer";
 import { parseEnvValue } from "@prisma/internals";
 import removeDir from "../utils/removeDir";
+import fs from "fs";
 
 export async function generate(options: GeneratorOptions) {
   try {
@@ -16,7 +17,11 @@ export async function generate(options: GeneratorOptions) {
 
       t.setOutputPath({ path: parsedPath });
 
-      await removeDir(parsedPath, true);
+      if (fs.existsSync(parsedPath)) {
+        await removeDir(parsedPath, true);
+      } else {
+        fs.mkdirSync(parsedPath, { recursive: true });
+      }
     }
 
     await t.transform();
