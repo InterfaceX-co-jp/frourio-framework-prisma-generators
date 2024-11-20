@@ -67,3 +67,20 @@ model Polymorphic {
   PolymorphicBook Book? @relation(fields: [polymorphicId], references: [id], map: "book_polymorphicId")
   PolymorphicPost Post? @relation(fields: [polymorphicId], references: [id], map: "post_polymorphicId")
 }
+
+enum ArrayFieldExampleEnum {
+  A
+  B
+}
+
+model ArrayField {
+  id Int @id @default(autoincrement())
+
+  intArray      Int[]
+  floatArray    Float[]
+  stringArray   String[]
+  booleanArray  Boolean[]
+  dateTimeArray DateTime[]
+  bytesArray    Bytes[]
+  enumArray     ArrayFieldExampleEnum[]
+}

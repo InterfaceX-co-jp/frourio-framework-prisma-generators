@@ -68,7 +68,9 @@ export default class Transformer {
                 return this.renderKeyValueFieldStringFromDMMFField({
                   field,
                   overrideValue:
-                    field.type === "DateTime" ? "string" : undefined, // DTO needs to be string for Date
+                    field.type === "DateTime"
+                      ? `string${field.isList ? "[]" : ""}`
+                      : undefined, // DTO needs to be string for Date
                 });
               })
               .join("\n  ")}
@@ -152,7 +154,9 @@ export default class Transformer {
                 ${args.model.fields
                   .map((field) => {
                     if (field.type === "DateTime") {
-                      return `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
+                      return field.isList
+                        ? `${field.name}: this._${field.name}.map((el => el.toISOString()))` // convert Date to string
+                        : `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
                     }
 
                     return `${field.name}: this._${field.name}`;
@@ -206,31 +210,35 @@ export default class Transformer {
   }
 
   private mapPrismaValueType(args: { field: PrismaDMMF.Field }) {
-    switch (args.field.type) {
-      case "String":
-        return "string";
-      case "Int":
-        return "number";
-      case "Boolean":
-        return "boolean";
-      case "DateTime":
-        return "Date";
-      case "Json":
-        return "Record<string, unknown>";
-      case "Float":
-        return "number";
-      case "Enum":
-        return "string";
-      case "Decimal":
-        return "number";
-      case "BigInt":
-        return "bigint";
-      case "Bytes":
-        return "Buffer";
-      case args.field.type:
-        return `Prisma${args.field.type}`;
-      default:
-        return "unknown";
-    }
+    const mappedType = () => {
+      switch (args.field.type) {
+        case "String":
+          return "string";
+        case "Int":
+          return "number";
+        case "Boolean":
+          return "boolean";
+        case "DateTime":
+          return "Date";
+        case "Json":
+          return "Record<string, unknown>";
+        case "Float":
+          return "number";
+        case "Enum":
+          return "string";
+        case "Decimal":
+          return "number";
+        case "BigInt":
+          return "bigint";
+        case "Bytes":
+          return "Buffer";
+        case args.field.type:
+          return `Prisma${args.field.type}`;
+        default:
+          return "unknown";
+      }
+    };
+
+    return args.field.isList ? `${mappedType()}[]` : mappedType();
   }
 }

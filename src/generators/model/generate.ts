@@ -1,6 +1,7 @@
 import { EnvValue, GeneratorOptions } from "@prisma/generator-helper";
 import Transformer from "./transformer";
 import { parseEnvValue } from "@prisma/internals";
+import removeDir from "../utils/removeDir";
 
 export async function generate(options: GeneratorOptions) {
   try {
@@ -14,6 +15,8 @@ export async function generate(options: GeneratorOptions) {
       const parsedPath = parseEnvValue(options.generator.output as EnvValue);
 
       t.setOutputPath({ path: parsedPath });
+
+      await removeDir(parsedPath, true);
     }
 
     await t.transform();
