@@ -200,6 +200,16 @@ export default class Transformer {
                           return `${changeCase.camelCase(field.name)}: args.self.${field.name}.toNumber()`;
                         }
 
+                        if (field.type === "Json" && field.documentation) {
+                          const jsonType = parseFieldDocumentation({
+                            field,
+                          });
+
+                          if (jsonType) {
+                            return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${jsonType.type}`;
+                          }
+                        }
+
                         return `${changeCase.camelCase(field.name)}: args.self.${field.name}`;
                       })
                       .join(",\n")}
