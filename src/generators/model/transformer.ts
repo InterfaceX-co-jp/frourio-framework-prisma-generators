@@ -25,8 +25,8 @@ export default class Transformer {
     this._additionalTypePath = args.path;
   }
 
-  private generatePrismaRuntimeTypeImports() {
-    return this.hasJsonFields
+  private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
+    return args.model.fields.find((field) => field.type === "Json")
       ? `import type { JsonValue } from "@prisma/client/runtime/library"`
       : "";
   }
@@ -86,15 +86,30 @@ export default class Transformer {
     field: PrismaDMMF.Field;
     overrideValue?: string;
   }) {
-    if (args.field.relationName) {
-      if (args.field.isList) {
-        return `${args.field.name}${args.field.isRequired ? "" : "?"}: Prisma${args.field.type}[]`;
-      }
+    const requiredOrNullKey = args.field.isRequired ? "" : "?";
+    const requiredOrNullValue = args.field.isRequired ? "" : "| null";
 
-      return `${args.field.name}${args.field.isRequired ? "" : "?"}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${args.field.isRequired ? "" : "| null"}`;
+    const renderKey = `${args.field.name}${requiredOrNullKey}`;
+
+    if (args.field.relationName) {
+      return args.field.isList
+        ? `${renderKey}: Prisma${args.field.type}[]`
+        : `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
     }
 
-    return `${args.field.name}${args.field.isRequired ? "" : "?"}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${args.field.isRequired ? "" : "| null"}`;
+    if (args.field.type === "Json" && args.field.documentation) {
+      const jsonType = parseFieldDocumentation({
+        field: args.field,
+      });
+
+      if (jsonType) {
+        return args.field.isList
+          ? `${renderKey}: ${jsonType.type}[]`
+          : `${renderKey}: ${args.overrideValue ? args.overrideValue : jsonType?.type}${requiredOrNullValue}`;
+      }
+    }
+
+    return `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
   }
 
   private generateModelDtoInterface(args: { model: PrismaDMMF.Model }) {
@@ -107,14 +122,6 @@ export default class Transformer {
                     field,
                     overrideValue: "Prisma" + field.type,
                   });
-                }
-
-                const jsonType = parseFieldDocumentation({
-                  field,
-                });
-
-                if (field.type === "Json" && field.documentation && jsonType) {
-                  return `${field.name}: ${jsonType}`;
                 }
 
                 return this.renderKeyValueFieldStringFromDMMFField({
@@ -237,9 +244,8 @@ export default class Transformer {
       writeFileSafely(
         `${this._outputPath}/${model.name}.model.ts`,
         `
-          ${this.generatePrismaRuntimeTypeImports()}
+          ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
-          ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
 
@@ -259,7 +265,15 @@ export default class Transformer {
               ${this.generateModelGetterFields({ model: camelCasedModel })}
           }
         `,
-      );
+      )
+        .then(() => {
+          console.log(
+            `[Frourio Framework]Model Generated: ${model.name}.model.ts`,
+          );
+        })
+        .catch((e) => {
+          console.error(e);
+        });
     }
   }
 
