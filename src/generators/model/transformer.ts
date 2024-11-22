@@ -36,12 +36,12 @@ export default class Transformer {
 
     const imports = args.model.fields.map((field) => {
       if (field.type === "Json" && field.documentation) {
-        const jsonType = parseFieldDocumentation({
+        const parsed = parseFieldDocumentation({
           field,
         });
 
-        if (jsonType) {
-          return jsonType.type;
+        if (parsed) {
+          return parsed.type?.jsonType;
         }
       }
     });
@@ -98,14 +98,14 @@ export default class Transformer {
     }
 
     if (args.field.type === "Json" && args.field.documentation) {
-      const jsonType = parseFieldDocumentation({
+      const parsed = parseFieldDocumentation({
         field: args.field,
       });
 
-      if (jsonType) {
+      if (parsed) {
         return args.field.isList
-          ? `${renderKey}: ${jsonType.type}[]`
-          : `${renderKey}: ${args.overrideValue ? args.overrideValue : jsonType?.type}${requiredOrNullValue}`;
+          ? `${renderKey}: ${parsed.type?.jsonType}[]`
+          : `${renderKey}: ${args.overrideValue ? args.overrideValue : parsed.type?.jsonType}${requiredOrNullValue}`;
       }
     }
 
@@ -201,12 +201,12 @@ export default class Transformer {
                         }
 
                         if (field.type === "Json" && field.documentation) {
-                          const jsonType = parseFieldDocumentation({
+                          const parsed = parseFieldDocumentation({
                             field,
                           });
 
-                          if (jsonType) {
-                            return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${jsonType.type}`;
+                          if (parsed) {
+                            return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${parsed.type?.jsonType}`;
                           }
                         }
 

@@ -91,4 +91,5 @@ model JsonField {
 
   rawJson    Json
   jsonObject Json /// @json(type: [JsonObject])
+  jsonArray  Json /// @json(type: [JsonArray])
 }
