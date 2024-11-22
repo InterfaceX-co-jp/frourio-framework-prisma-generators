@@ -12,8 +12,9 @@ export default class Transformer {
   private _additionalTypePath: string = "../@additionalType/index.ts";
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
-    console.log(args.models.find((model) => model.name === "JsonField"));
+    // console.log(args.models.find((model) => model.name === "JsonField"));
     this._models = args.models;
+    console.log(this.jsonFields);
   }
 
   setOutputPath(args: { path: string }) {
@@ -30,13 +31,19 @@ export default class Transformer {
       : "";
   }
 
-  private generateAdditionalTypeImport() {
-    const imports = this.jsonFields.map((field) => {
-      const type = parseFieldDocumentation({
-        field,
-      });
+  private generateAdditionalTypeImport(args: { model: PrismaDMMF.Model }) {
+    if (!args.model.fields.find((field) => field.type === "Json")) {
+      return "";
+    }
 
-      return type;
+    const imports = this.jsonFields.map(({ key, fields }) => {
+      return fields.map((field) => {
+        const type = parseFieldDocumentation({
+          field,
+        });
+
+        return type;
+      });
     });
 
     return `import { 
@@ -47,7 +54,9 @@ export default class Transformer {
   private get jsonFields() {
     return this._models
       .map((model) => {
-        return model.fields.filter((field) => field.type === "Json");
+        return {
+          [model.name]: model.fields.filter((field) => field.type === "Json"),
+        };
       })
       .flat();
   }
@@ -230,7 +239,7 @@ export default class Transformer {
         `
           ${this.generatePrismaRuntimeTypeImports()}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
-          ${this.generateAdditionalTypeImport()}
+          ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
 
