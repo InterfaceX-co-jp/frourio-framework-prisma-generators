@@ -88,6 +88,7 @@ model ArrayField {
 model JsonField {
   id Int @id @default(autoincrement())
 
-  json      Json
+  jsonObject Json /// @json(type: [JsonObject])
+
   jsonArray Json[]
 }

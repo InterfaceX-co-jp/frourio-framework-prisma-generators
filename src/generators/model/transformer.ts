@@ -4,19 +4,24 @@ import type {
 } from "@prisma/generator-helper";
 import { writeFileSafely } from "../utils/writeFileSafely";
 import * as changeCase from "change-case-all";
+import { parseFieldDocumentation } from "./lib/json/parseFieldDocumentation";
 
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
-  private _jsonFields: string[] = [];
+  private _additionalTypePath: string = "../@additionalType/index.ts";
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
+    console.log(args.models.find((model) => model.name === "JsonField"));
     this._models = args.models;
-    this.initialize();
   }
 
   setOutputPath(args: { path: string }) {
     this._outputPath = args.path;
+  }
+
+  setAdditionalTypePath(args: { path: string }) {
+    this._additionalTypePath = args.path;
   }
 
   private generatePrismaRuntimeTypeImports() {
@@ -25,17 +30,26 @@ export default class Transformer {
       : "";
   }
 
-  private initialize() {
-    this.checkJsonFields();
+  private generateAdditionalTypeImport() {
+    const imports = this.jsonFields.map((field) => {
+      const type = parseFieldDocumentation({
+        field,
+      });
+
+      return type;
+    });
+
+    return `import { 
+              ${[...new Set(imports)].filter((i) => i).join(", ")}
+            } from '${this._additionalTypePath}';`;
   }
 
-  private checkJsonFields() {
-    this._jsonFields = this._models
+  private get jsonFields() {
+    return this._models
       .map((model) => {
         return model.fields.filter((field) => field.type === "Json");
       })
-      .flat()
-      .map((field) => field.name);
+      .flat();
   }
 
   private generatePrismaModelImportStatement(args: {
@@ -84,6 +98,14 @@ export default class Transformer {
                     field,
                     overrideValue: "Prisma" + field.type,
                   });
+                }
+
+                const jsonType = parseFieldDocumentation({
+                  field,
+                });
+
+                if (field.type === "Json" && field.documentation && jsonType) {
+                  return `${field.name}: ${jsonType}`;
                 }
 
                 return this.renderKeyValueFieldStringFromDMMFField({
@@ -208,6 +230,7 @@ export default class Transformer {
         `
           ${this.generatePrismaRuntimeTypeImports()}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
+          ${this.generateAdditionalTypeImport()}
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
 
@@ -265,6 +288,6 @@ export default class Transformer {
   }
 
   get hasJsonFields() {
-    return this._jsonFields.length > 0;
+    return this.jsonFields.length > 0;
   }
 }
