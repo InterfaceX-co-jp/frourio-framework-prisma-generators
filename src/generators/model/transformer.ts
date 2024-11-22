@@ -4,10 +4,12 @@ import type {
 } from "@prisma/generator-helper";
 import { writeFileSafely } from "../utils/writeFileSafely";
 import * as changeCase from "change-case-all";
+import { parseFieldDocumentation } from "./lib/json/parseFieldDocumentation";
 
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
+  private _additionalTypePath: string = "../../@additionalType/index.ts";
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
     this._models = args.models;
@@ -15,6 +17,48 @@ export default class Transformer {
 
   setOutputPath(args: { path: string }) {
     this._outputPath = args.path;
+  }
+
+  setAdditionalTypePath(args: { path: string }) {
+    this._additionalTypePath = args.path;
+  }
+
+  private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
+    return args.model.fields.find((field) => field.type === "Json")
+      ? `import type { JsonValue } from "@prisma/client/runtime/library"`
+      : "";
+  }
+
+  private generateAdditionalTypeImport(args: { model: PrismaDMMF.Model }) {
+    if (!args.model.fields.find((field) => field.type === "Json")) {
+      return "";
+    }
+
+    const imports = args.model.fields.map((field) => {
+      if (field.type === "Json" && field.documentation) {
+        const parsed = parseFieldDocumentation({
+          field,
+        });
+
+        if (parsed) {
+          return parsed.type?.jsonType;
+        }
+      }
+    });
+
+    return `import { 
+              ${[...new Set(imports)].filter((i) => i).join(", ")}
+            } from '${this._additionalTypePath}';`;
+  }
+
+  private get jsonFields() {
+    return this._models
+      .map((model) => {
+        return {
+          [model.name]: model.fields.filter((field) => field.type === "Json"),
+        };
+      })
+      .flat();
   }
 
   private generatePrismaModelImportStatement(args: {
@@ -42,15 +86,30 @@ export default class Transformer {
     field: PrismaDMMF.Field;
     overrideValue?: string;
   }) {
-    if (args.field.relationName) {
-      if (args.field.isList) {
-        return `${args.field.name}${args.field.isRequired ? "" : "?"}: Prisma${args.field.type}[]`;
-      }
+    const requiredOrNullKey = args.field.isRequired ? "" : "?";
+    const requiredOrNullValue = args.field.isRequired ? "" : "| null";
 
-      return `${args.field.name}${args.field.isRequired ? "" : "?"}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${args.field.isRequired ? "" : "| null"}`;
+    const renderKey = `${args.field.name}${requiredOrNullKey}`;
+
+    if (args.field.relationName) {
+      return args.field.isList
+        ? `${renderKey}: Prisma${args.field.type}[]`
+        : `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
     }
 
-    return `${args.field.name}${args.field.isRequired ? "" : "?"}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${args.field.isRequired ? "" : "| null"}`;
+    if (args.field.type === "Json" && args.field.documentation) {
+      const parsed = parseFieldDocumentation({
+        field: args.field,
+      });
+
+      if (parsed) {
+        return args.field.isList
+          ? `${renderKey}: ${parsed.type?.jsonType}[]`
+          : `${renderKey}: ${args.overrideValue ? args.overrideValue : parsed.type?.jsonType}${requiredOrNullValue}`;
+      }
+    }
+
+    return `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
   }
 
   private generateModelDtoInterface(args: { model: PrismaDMMF.Model }) {
@@ -141,6 +200,16 @@ export default class Transformer {
                           return `${changeCase.camelCase(field.name)}: args.self.${field.name}.toNumber()`;
                         }
 
+                        if (field.type === "Json" && field.documentation) {
+                          const parsed = parseFieldDocumentation({
+                            field,
+                          });
+
+                          if (parsed) {
+                            return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${parsed.type?.jsonType}`;
+                          }
+                        }
+
                         return `${changeCase.camelCase(field.name)}: args.self.${field.name}`;
                       })
                       .join(",\n")}
@@ -185,7 +254,9 @@ export default class Transformer {
       writeFileSafely(
         `${this._outputPath}/${model.name}.model.ts`,
         `
+          ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
+          ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
 
@@ -205,7 +276,15 @@ export default class Transformer {
               ${this.generateModelGetterFields({ model: camelCasedModel })}
           }
         `,
-      );
+      )
+        .then(() => {
+          console.log(
+            `[Frourio Framework]Model Generated: ${model.name}.model.ts`,
+          );
+        })
+        .catch((e) => {
+          console.error(e);
+        });
     }
   }
 
@@ -221,7 +300,7 @@ export default class Transformer {
         case "DateTime":
           return "Date";
         case "Json":
-          return "Record<string, unknown>";
+          return "JsonValue";
         case "Float":
           return "number";
         case "Enum":
@@ -240,5 +319,9 @@ export default class Transformer {
     };
 
     return args.field.isList ? `${mappedType()}[]` : mappedType();
+  }
+
+  get hasJsonFields() {
+    return this.jsonFields.length > 0;
   }
 }

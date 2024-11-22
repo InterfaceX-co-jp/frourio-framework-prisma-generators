@@ -8,8 +8,9 @@ datasource db {
 }
 
 generator model {
-  provider = "node ./lib/generators/model/generator.js"
-  output   = "./__generated__/model"
+  provider           = "node ./lib/generators/model/generator.js"
+  output             = "./__generated__/model"
+  additionalTypePath = "./@additionalType/index.ts"
 }
 
 model User {
@@ -83,4 +84,12 @@ model ArrayField {
   dateTimeArray DateTime[]
   bytesArray    Bytes[]
   enumArray     ArrayFieldExampleEnum[]
+}
+
+model JsonField {
+  id Int @id @default(autoincrement())
+
+  rawJson    Json
+  jsonObject Json /// @json(type: [JsonObject])
+  jsonArray  Json /// @json(type: [JsonArray])
 }
