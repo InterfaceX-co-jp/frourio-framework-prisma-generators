@@ -8,8 +8,9 @@ datasource db {
 }
 
 generator model {
-  provider = "node ./lib/generators/model/generator.js"
-  output   = "./__generated__/model"
+  provider           = "node ./lib/generators/model/generator.js"
+  output             = "./__generated__/model"
+  additionalTypePath = "./@additionalType/index.ts"
 }
 
 model User {
