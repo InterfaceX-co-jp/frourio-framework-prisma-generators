@@ -8,13 +8,34 @@ import * as changeCase from "change-case-all";
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
+  private _jsonFields: string[] = [];
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
     this._models = args.models;
+    this.initialize();
   }
 
   setOutputPath(args: { path: string }) {
     this._outputPath = args.path;
+  }
+
+  private generatePrismaRuntimeTypeImports() {
+    return this.hasJsonFields
+      ? `import type { JsonValue } from "@prisma/client/runtime/library"`
+      : "";
+  }
+
+  private initialize() {
+    this.checkJsonFields();
+  }
+
+  private checkJsonFields() {
+    this._jsonFields = this._models
+      .map((model) => {
+        return model.fields.filter((field) => field.type === "Json");
+      })
+      .flat()
+      .map((field) => field.name);
   }
 
   private generatePrismaModelImportStatement(args: {
@@ -185,6 +206,7 @@ export default class Transformer {
       writeFileSafely(
         `${this._outputPath}/${model.name}.model.ts`,
         `
+          ${this.generatePrismaRuntimeTypeImports()}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
 
           ${this.generateModelDtoInterface({ model: camelCasedModel })}
@@ -221,7 +243,7 @@ export default class Transformer {
         case "DateTime":
           return "Date";
         case "Json":
-          return "Record<string, unknown>";
+          return "JsonValue";
         case "Float":
           return "number";
         case "Enum":
@@ -240,5 +262,9 @@ export default class Transformer {
     };
 
     return args.field.isList ? `${mappedType()}[]` : mappedType();
+  }
+
+  get hasJsonFields() {
+    return this._jsonFields.length > 0;
   }
 }
