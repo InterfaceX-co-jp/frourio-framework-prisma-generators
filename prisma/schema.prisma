@@ -84,3 +84,10 @@ model ArrayField {
   bytesArray    Bytes[]
   enumArray     ArrayFieldExampleEnum[]
 }
+
+model JsonField {
+  id Int @id @default(autoincrement())
+
+  json      Json
+  jsonArray Json[]
+}
