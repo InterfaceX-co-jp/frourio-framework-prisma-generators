@@ -159,6 +159,24 @@ export default class Transformer {
     return `{
               ${args.model.fields
                 .map((field) => {
+                  if (field.relationName) {
+                    const relatedModel = this._models.find(
+                      (model) => model.name === field.type,
+                    );
+
+                    if (!relatedModel) {
+                      return "";
+                    }
+
+                    return `${field.name}: {
+                      ${relatedModel.fields
+                        .filter((field) => field.relationName)
+                        .map((field) => {
+                          return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: Prisma${field.type}${field.isList ? "[]" : ""}`;
+                        })
+                        .join(",\n")}
+                    }`;
+                  }
                   return this.renderKeyValueFieldStringFromDMMFField({ field });
                 })
                 .join(";\n")}

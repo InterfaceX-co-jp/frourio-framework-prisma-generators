@@ -93,3 +93,23 @@ model JsonField {
   jsonObject Json /// @json(type: [JsonObject])
   jsonArray  Json /// @json(type: [JsonArray])
 }
+
+model ManyToManyA {
+  id              Int               @id @default(autoincrement())
+  ManyToManyPivot ManyToManyPivot[]
+}
+
+model ManyToManyB {
+  id              Int               @id @default(autoincrement())
+  ManyToManyPivot ManyToManyPivot[]
+}
+
+model ManyToManyPivot {
+  aId Int
+  bId Int
+
+  A ManyToManyA @relation(fields: [aId], references: [id])
+  B ManyToManyB @relation(fields: [bId], references: [id])
+
+  @@id([aId, bId])
+}
