@@ -406,7 +406,12 @@ export default class Transformer {
         case "Bytes":
           return "Buffer";
         case args.field.type:
-          return `${args.field.type}WithIncludes`;
+          console.log(args.field);
+          if (args.field.relationName) {
+            return `${args.field.type}WithIncludes`;
+          }
+
+          return `Prisma${args.field.type}`;
         default:
           return "unknown";
       }
