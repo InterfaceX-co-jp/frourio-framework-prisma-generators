@@ -74,6 +74,7 @@ export default class Transformer {
     ];
 
     return `import { 
+              Prisma,
               ${[...new Set(imports)].filter((i) => i).join(", ")}
             } from '@prisma/client';`;
   }
@@ -93,7 +94,7 @@ export default class Transformer {
 
     if (args.field.relationName) {
       return args.field.isList
-        ? `${renderKey}: Prisma${args.field.type}[]`
+        ? `${renderKey}: ${args.field.type}WithIncludes[]`
         : `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
     }
 
@@ -112,27 +113,36 @@ export default class Transformer {
     return `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
   }
 
-  private generateModelDtoInterface(args: { model: PrismaDMMF.Model }) {
+  private generateModelDtoType(args: { model: PrismaDMMF.Model }) {
+    let keyValueList = args.model.fields.map((field) => {
+      if (field.relationName) {
+        return this.renderKeyValueFieldStringFromDMMFField({
+          field,
+        });
+      }
+
+      return this.renderKeyValueFieldStringFromDMMFField({
+        field,
+        overrideValue:
+          field.type === "DateTime"
+            ? `string${field.isList ? "[]" : ""}`
+            : undefined, // DTO needs to be string for Date
+      });
+    });
+
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        field.relationFromFields?.forEach((relationField) => {
+          keyValueList = keyValueList.filter((keyValue) => {
+            return !keyValue.includes(relationField);
+          });
+        });
+      }
+    }
+
     return `
         export type ${args.model.name}ModelDto = {
-            ${args.model.fields
-              .map((field) => {
-                if (field.relationName) {
-                  return this.renderKeyValueFieldStringFromDMMFField({
-                    field,
-                    overrideValue: "Prisma" + field.type,
-                  });
-                }
-
-                return this.renderKeyValueFieldStringFromDMMFField({
-                  field,
-                  overrideValue:
-                    field.type === "DateTime"
-                      ? `string${field.isList ? "[]" : ""}`
-                      : undefined, // DTO needs to be string for Date
-                });
-              })
-              .join("\n  ")}
+            ${keyValueList.join("\n  ")}
         }
     `;
   }
@@ -148,42 +158,86 @@ export default class Transformer {
   }
 
   private generateModelFields(args: { model: PrismaDMMF.Model }) {
-    return args.model.fields
-      .map((field) => {
-        return `private readonly _${this.renderKeyValueFieldStringFromDMMFField({ field })};`;
-      })
-      .join("\n  ");
+    let keyValueList = args.model.fields.map((field) => {
+      return `private readonly _${this.renderKeyValueFieldStringFromDMMFField({ field })};`;
+    });
+
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        field.relationFromFields?.forEach((relationField) => {
+          keyValueList = keyValueList.filter((keyValue) => {
+            return !keyValue.includes(relationField);
+          });
+        });
+      }
+    }
+
+    return keyValueList.join("\n  ");
   }
 
   private generateModelConstructorType(args: { model: PrismaDMMF.Model }) {
+    let keyValueList = args.model.fields.map((field) => {
+      return this.renderKeyValueFieldStringFromDMMFField({ field });
+    });
+
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        console.log(field);
+
+        field.relationFromFields?.forEach((relationField) => {
+          keyValueList = keyValueList.filter((keyValue) => {
+            return !keyValue.includes(relationField);
+          });
+        });
+      }
+      this.renderKeyValueFieldStringFromDMMFField({ field });
+    }
+
     return `{
-              ${args.model.fields
-                .map((field) => {
-                  return this.renderKeyValueFieldStringFromDMMFField({ field });
-                })
-                .join(";\n")}
+              ${keyValueList.join(";\n")}
             }`;
   }
 
   private generateModelConstructor(args: { model: PrismaDMMF.Model }) {
+    let keyValueList = args.model.fields.map((field) => {
+      return `this._${field.name} = args.${field.name};`;
+    });
+
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        field.relationFromFields?.forEach((relationField) => {
+          keyValueList = keyValueList.filter((keyValue) => {
+            return !keyValue.includes(relationField);
+          });
+        });
+      }
+    }
+
     return `constructor(args: ${args.model.name}ModelConstructorArgs) {
-            ${args.model.fields
-              .map((field) => {
-                return `this._${field.name} = args.${field.name};`;
-              })
-              .join("\n  ")}
+            ${keyValueList.join("\n  ")}
         }`;
   }
 
   private generateStaticFromPrismaValueType(args: { model: PrismaDMMF.Model }) {
+    let keyValueList = args.model.fields
+      .filter((field) => field.relationName)
+      .map((field) => {
+        return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: ${field.type}WithIncludes${field.isList ? "[]" : ""}`;
+      });
+
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        field.relationFromFields?.forEach((relationField) => {
+          keyValueList = keyValueList.filter((keyValue) => {
+            return !keyValue.includes(relationField);
+          });
+        });
+      }
+    }
+
     return `{
               self: Prisma${args.model.name},
-              ${args.model.fields
-                .filter((field) => field.relationName)
-                .map((field) => {
-                  return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: Prisma${field.type}${field.isList ? "[]" : ""}`;
-                })
-                .join(",\n")}
+              ${keyValueList.join(",\n")}
             }`;
   }
 
@@ -247,6 +301,25 @@ export default class Transformer {
     };
   }
 
+  generateWithIncludePrismaType(args: {
+    model: PrismaDMMF.Model;
+    pascalCasedModel: { name: string };
+  }) {
+    return args.model.fields
+      .filter((field) => field.relationName)
+      .map((field) => {
+        return `
+          const ${field.name}WithInclude = Prisma.validator<Prisma.${args.pascalCasedModel.name}DefaultArgs>()({ 
+            include: {
+              ${changeCase.pascalCase(field.type)}: true
+            }
+          });
+          type ${changeCase.pascalCase(field.name)}WithIncludes = Prisma.${args.pascalCasedModel.name}GetPayload<typeof ${field.name}WithInclude>;
+        `;
+      })
+      .join("\n");
+  }
+
   async transform() {
     for (const model of this._models) {
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
@@ -258,7 +331,14 @@ export default class Transformer {
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
 
-          ${this.generateModelDtoInterface({ model: camelCasedModel })}
+          ${this.generateWithIncludePrismaType({
+            model: camelCasedModel,
+            pascalCasedModel: {
+              name: model.name,
+            },
+          })}
+
+          ${this.generateModelDtoType({ model: camelCasedModel })}
 
           export type ${model.name}ModelConstructorArgs = ${this.generateModelConstructorType({ model: camelCasedModel })}
 
@@ -312,7 +392,7 @@ export default class Transformer {
         case "Bytes":
           return "Buffer";
         case args.field.type:
-          return `Prisma${args.field.type}`;
+          return `${args.field.type}WithIncludes`;
         default:
           return "unknown";
       }
