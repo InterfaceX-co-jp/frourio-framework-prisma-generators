@@ -130,26 +130,31 @@ export default class Transformer {
       });
     });
 
-    this._removeRelationFromFieldsId({
+    const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
     return `
         export type ${args.model.name}ModelDto = {
-            ${keyValueList.join("\n  ")}
+            ${fields.join("\n  ")}
         }
     `;
   }
 
   private generateModelGetterFields(args: { model: PrismaDMMF.Model }) {
-    return args.model.fields
-      .map((field) => {
-        return `get ${field.name}() {
+    let keyValueList = args.model.fields.map((field) => {
+      return `get ${field.name}() {
             return this._${field.name};
         }`;
-      })
-      .join("\n\n  ");
+    });
+
+    const fields = this.removeRelationFromFieldsId({
+      model: args.model,
+      mutatingList: keyValueList,
+    });
+
+    return fields.join("\n\n  ");
   }
 
   private generateModelFields(args: { model: PrismaDMMF.Model }) {
@@ -157,12 +162,12 @@ export default class Transformer {
       return `private readonly _${this.renderKeyValueFieldStringFromDMMFField({ field })};`;
     });
 
-    this._removeRelationFromFieldsId({
+    const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
-    return keyValueList.join("\n  ");
+    return fields.join("\n  ");
   }
 
   private generateModelConstructorType(args: { model: PrismaDMMF.Model }) {
@@ -170,13 +175,13 @@ export default class Transformer {
       return this.renderKeyValueFieldStringFromDMMFField({ field });
     });
 
-    this._removeRelationFromFieldsId({
+    const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
     return `{
-              ${keyValueList.join(";\n")}
+              ${fields.join(";\n")}
             }`;
   }
 
@@ -185,13 +190,13 @@ export default class Transformer {
       return `this._${field.name} = args.${field.name};`;
     });
 
-    this._removeRelationFromFieldsId({
+    const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
     return `constructor(args: ${args.model.name}ModelConstructorArgs) {
-            ${keyValueList.join("\n  ")}
+            ${fields.join("\n  ")}
         }`;
   }
 
@@ -202,14 +207,14 @@ export default class Transformer {
         return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: ${field.type}WithIncludes${field.isList ? "[]" : ""}`;
       });
 
-    this._removeRelationFromFieldsId({
+    const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
     return `{
               self: Prisma${args.model.name},
-              ${keyValueList.join(",\n")}
+              ${fields.join(",\n")}
             }`;
   }
 
@@ -236,47 +241,56 @@ export default class Transformer {
       return `${changeCase.camelCase(field.name)}: args.self.${field.name}`;
     });
 
-    this._removeRelationFromFieldsId({
+    const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
     return `static fromPrismaValue(args: ${args.model.name}ModelFromPrismaValueArgs) {
                 return new ${args.model.name}Model({
-                    ${keyValueList.join(",\n")}
+                    ${fields.join(",\n")}
                 });
             }`;
   }
 
-  private _removeRelationFromFieldsId(args: {
+  private removeRelationFromFieldsId(args: {
     model: PrismaDMMF.Model;
     mutatingList: string[];
   }) {
+    let mutatingList = [...args.mutatingList];
+
     for (const field of args.model.fields) {
       if (field.relationName) {
         field.relationFromFields?.forEach((relationField) => {
-          args.mutatingList = args.mutatingList.filter((keyValue) => {
+          mutatingList = mutatingList.filter((keyValue) => {
             return !keyValue.includes(relationField);
           });
         });
       }
     }
+
+    return mutatingList;
   }
 
   private generateToDtoMethod(args: { model: PrismaDMMF.Model }) {
+    const keyValueList = args.model.fields.map((field) => {
+      if (field.type === "DateTime") {
+        return field.isList
+          ? `${field.name}: this._${field.name}.map((el => el.toISOString()))` // convert Date to string
+          : `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
+      }
+
+      return `${field.name}: this._${field.name}`;
+    });
+
+    const fields = this.removeRelationFromFieldsId({
+      model: args.model,
+      mutatingList: keyValueList,
+    });
+
     return `toDto() {
             return {
-                ${args.model.fields
-                  .map((field) => {
-                    if (field.type === "DateTime") {
-                      return field.isList
-                        ? `${field.name}: this._${field.name}.map((el => el.toISOString()))` // convert Date to string
-                        : `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
-                    }
-
-                    return `${field.name}: this._${field.name}`;
-                  })
-                  .join(",\n")}
+                ${fields.join(",\n")}
             };
         }`;
   }
@@ -301,12 +315,12 @@ export default class Transformer {
       .filter((field) => field.relationName)
       .map((field) => {
         return `
-          const ${field.name}WithInclude = Prisma.validator<Prisma.${args.pascalCasedModel.name}DefaultArgs>()({ 
+          const ${field.name}WithInclude = Prisma.validator<Prisma.${field.type}DefaultArgs>()({ 
             include: {
               ${changeCase.pascalCase(field.type)}: true
             }
           });
-          type ${changeCase.pascalCase(field.name)}WithIncludes = Prisma.${args.pascalCasedModel.name}GetPayload<typeof ${field.name}WithInclude>;
+          type ${changeCase.pascalCase(field.name)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.name}WithInclude>;
         `;
       })
       .join("\n");
