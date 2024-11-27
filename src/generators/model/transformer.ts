@@ -94,7 +94,7 @@ export default class Transformer {
 
     if (args.field.relationName) {
       return args.field.isList
-        ? `${renderKey}: ${args.field.type}WithIncludes[]`
+        ? `${renderKey}: ${changeCase.pascalCase(args.field.type)}WithIncludes[]`
         : `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
     }
 
@@ -204,7 +204,7 @@ export default class Transformer {
     let keyValueList = args.model.fields
       .filter((field) => field.relationName)
       .map((field) => {
-        return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: ${field.type}WithIncludes${field.isList ? "[]" : ""}`;
+        return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: ${changeCase.pascalCase(field.type)}WithIncludes${field.isList ? "[]" : ""}`;
       });
 
     const fields = this.removeRelationFromFieldsId({
