@@ -36,6 +36,7 @@ model Post {
   bytes     Bytes
 
   Polymorphic Polymorphic[]
+  Book_Post   Book_Post[]
 }
 
 model Book {
@@ -45,6 +46,7 @@ model Book {
   authorId Int?
 
   Polymorphic Polymorphic[]
+  Book_Post   Book_Post[]
 }
 
 model Map {
@@ -92,4 +94,16 @@ model JsonField {
   rawJson    Json
   jsonObject Json /// @json(type: [JsonObject])
   jsonArray  Json /// @json(type: [JsonArray])
+}
+
+model Book_Post {
+  id Int @id @default(autoincrement())
+
+  bookId Int
+  Book   Book @relation(fields: [bookId], references: [id])
+
+  postId Int
+  Post   Post @relation(fields: [postId], references: [id])
+
+  @@unique([bookId, postId])
 }
