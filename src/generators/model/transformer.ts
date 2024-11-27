@@ -114,7 +114,7 @@ export default class Transformer {
 
   private generateModelDtoInterface(args: { model: PrismaDMMF.Model }) {
     return `
-        export interface ${args.model.name}ModelDto {
+        export type ${args.model.name}ModelDto = {
             ${args.model.fields
               .map((field) => {
                 if (field.relationName) {
