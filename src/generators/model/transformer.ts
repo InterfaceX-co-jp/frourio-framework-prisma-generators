@@ -314,13 +314,21 @@ export default class Transformer {
     return args.model.fields
       .filter((field) => field.relationName)
       .map((field) => {
+        const selectingModel = this._models.find(
+          (model) => model.name === field.type,
+        );
+
         return `
-          const ${field.name}WithInclude = Prisma.validator<Prisma.${field.type}DefaultArgs>()({ 
+          const ${field.type}WithInclude = Prisma.validator<Prisma.${field.type}DefaultArgs>()({ 
             include: {
-              ${changeCase.pascalCase(field.type)}: true
+              ${selectingModel?.fields
+                .filter((el) => el.relationName)
+                .map((field) => {
+                  return `${field.name}: true`;
+                })}
             }
           });
-          type ${changeCase.pascalCase(field.name)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.name}WithInclude>;
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.type}WithInclude>;
         `;
       })
       .join("\n");
