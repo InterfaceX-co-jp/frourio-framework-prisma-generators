@@ -307,7 +307,7 @@ export default class Transformer {
     };
   }
 
-  generateWithIncludePrismaType(args: {
+  generateWithAndWithoutIncludePrismaType(args: {
     model: PrismaDMMF.Model;
     pascalCasedModel: { name: string };
   }) {
@@ -328,7 +328,16 @@ export default class Transformer {
                 })}
             }
           });
-          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.type}WithInclude>;
+          const ${field.type}WithoutInclude = Prisma.validator<Prisma.${field.type}DefaultArgs>()({ 
+            include: {
+              ${selectingModel?.fields
+                .filter((el) => el.relationName)
+                .map((field) => {
+                  return `${field.name}: true`;
+                })}
+            }
+          });
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.type}WithInclude | ${field.type}WithoutInclude>;
         `;
       })
       .join("\n");
@@ -345,7 +354,7 @@ export default class Transformer {
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
 
-          ${this.generateWithIncludePrismaType({
+          ${this.generateWithAndWithoutIncludePrismaType({
             model: camelCasedModel,
             pascalCasedModel: {
               name: model.name,
