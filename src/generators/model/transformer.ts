@@ -333,11 +333,11 @@ export default class Transformer {
               ${selectingModel?.fields
                 .filter((el) => el.relationName)
                 .map((field) => {
-                  return `${field.name}: true`;
+                  return `${field.name}: false`;
                 })}
             }
           });
-          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.type}WithInclude | ${field.type}WithoutInclude>;
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.type}WithInclude | typeof ${field.type}WithoutInclude>;
         `;
       })
       .join("\n");
