@@ -327,6 +327,12 @@ export default class Transformer {
                   return `${field.name}: true`;
                 })}
             }
+          } | {
+              ${selectingModel?.fields
+                .filter((el) => el.relationName)
+                .map((field) => {
+                  return `${field.name}: false`;
+                })} 
           }>;
         `;
       })
