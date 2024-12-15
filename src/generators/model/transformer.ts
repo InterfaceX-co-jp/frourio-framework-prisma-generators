@@ -319,7 +319,7 @@ export default class Transformer {
         );
 
         return `
-          const ${field.type}WithInclude = Prisma.validator<Prisma.${field.type}DefaultArgs>()({ 
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<{ 
             include: {
               ${selectingModel?.fields
                 .filter((el) => el.relationName)
@@ -327,17 +327,7 @@ export default class Transformer {
                   return `${field.name}: true`;
                 })}
             }
-          });
-          const ${field.type}WithoutInclude = Prisma.validator<Prisma.${field.type}DefaultArgs>()({ 
-            include: {
-              ${selectingModel?.fields
-                .filter((el) => el.relationName)
-                .map((field) => {
-                  return `${field.name}: false`;
-                })}
-            }
-          });
-          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<typeof ${field.type}WithInclude | typeof ${field.type}WithoutInclude>;
+          }>;
         `;
       })
       .join("\n");
