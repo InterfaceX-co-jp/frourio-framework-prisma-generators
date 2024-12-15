@@ -319,25 +319,21 @@ export default class Transformer {
         );
 
         return `
-          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<
-          | { 
-              include: {
-                ${selectingModel?.fields
-                  .filter((el) => el.relationName)
-                  .map((field) => {
-                    return `${field.name}: true`;
-                  })}
-              }
+          const include${changeCase.pascalCase(field.type)} = {
+            include: {
+              ${selectingModel?.fields
+                .filter((el) => el.relationName)
+                .map((field) => {
+                  return `${field.name}: true`;
+                })} 
             }
-          | {
-              include: {
-                ${selectingModel?.fields
-                  .filter((el) => el.relationName)
-                  .map((field) => {
-                    return `${field.name}: false`;
-                  })} 
-              }
-            }
+          }
+
+          type ${changeCase.pascalCase(field.type)}WithIncludes = PartialBy<
+            Prisma.${field.type}GetPayload<
+              typeof include${changeCase.pascalCase(field.type)}
+            >,
+            keyof typeof include${changeCase.pascalCase(field.type)}["include"]
           >;
         `;
       })
@@ -354,6 +350,9 @@ export default class Transformer {
           ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
+
+          type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;  
 
           ${this.generateWithAndWithoutIncludePrismaType({
             model: camelCasedModel,
