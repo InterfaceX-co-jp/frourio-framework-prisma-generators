@@ -319,15 +319,26 @@ export default class Transformer {
         );
 
         return `
-          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<{ 
-            include: {
-              ${selectingModel?.fields
-                .filter((el) => el.relationName)
-                .map((field) => {
-                  return `${field.name}: true`;
-                })}
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Prisma.${field.type}GetPayload<
+          | { 
+              include: {
+                ${selectingModel?.fields
+                  .filter((el) => el.relationName)
+                  .map((field) => {
+                    return `${field.name}: true`;
+                  })}
+              }
             }
-          }>;
+          | {
+              include: {
+                ${selectingModel?.fields
+                  .filter((el) => el.relationName)
+                  .map((field) => {
+                    return `${field.name}: false`;
+                  })} 
+              }
+            }
+          >;
         `;
       })
       .join("\n");
@@ -405,7 +416,6 @@ export default class Transformer {
         case "Bytes":
           return "Buffer";
         case args.field.type:
-          console.log(args.field);
           if (args.field.relationName) {
             return `${args.field.type}WithIncludes`;
           }
