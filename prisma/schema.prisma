@@ -94,6 +94,19 @@ model JsonField {
   rawJson    Json
   jsonObject Json /// @json(type: [JsonObject])
   jsonArray  Json /// @json(type: [JsonArray])
+
+  JsonFieldWithInclude JsonFieldWithInclude[]
+}
+
+model JsonFieldWithInclude {
+  id Int @id @default(autoincrement())
+
+  jsonFieldId Int
+  JsonField   JsonField @relation(fields: [jsonFieldId], references: [id])
+
+  rawJson    Json
+  jsonObject Json /// @json(type: [JsonObject])
+  jsonArray  Json /// @json(type: [JsonArray])
 }
 
 model Book_Post {

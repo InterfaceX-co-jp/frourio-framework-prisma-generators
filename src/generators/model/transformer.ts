@@ -329,12 +329,30 @@ export default class Transformer {
             }
           }
 
-          type ${changeCase.pascalCase(field.type)}WithIncludes = PartialBy<
-            Prisma.${field.type}GetPayload<
-              typeof include${changeCase.pascalCase(field.type)}
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Override<
+            PartialBy<
+              Prisma.${field.type}GetPayload<
+                typeof include${changeCase.pascalCase(field.type)}
+              >,
+              keyof typeof include${changeCase.pascalCase(field.type)}["include"]
             >,
-            keyof typeof include${changeCase.pascalCase(field.type)}["include"]
+            {
+              ${
+                selectingModel?.fields
+                  .filter((el) => el.relationName)
+                  .map((field) => {
+                    if (field.type === "Json" && field.documentation) {
+                      const parsed = parseFieldDocumentation({
+                        field,
+                      });
+                      return `${field.name}: ${parsed?.type?.jsonType}`;
+                    }
+                  })
+                  .join("\n") || ""
+              } 
+            }}
           >;
+
         `;
       })
       .join("\n");
@@ -351,8 +369,18 @@ export default class Transformer {
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
 
-          type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
-          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;  
+          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+          /**
+           * Make a type assembled from several types/utilities more readable.
+           * (e.g. the type will be shown as the final resulting type instead of as a bunch of type utils wrapping the initial type).
+           */
+          type FinalType<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
+          /**
+           * Merge keys of U into T, overriding value types with those in U.
+           */
+          type Override<T, U extends Partial<Record<keyof T, unknown>>> = FinalType<
+            Omit<T, keyof U> & U
+          >;
 
           ${this.generateWithAndWithoutIncludePrismaType({
             model: camelCasedModel,
