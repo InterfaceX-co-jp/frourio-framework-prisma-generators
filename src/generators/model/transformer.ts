@@ -23,6 +23,19 @@ export default class Transformer {
     this._additionalTypePath = args.path;
   }
 
+  private generateDtoTypeImports(args: { model: PrismaDMMF.Model }) {
+    const relations = args.model.fields.filter((el) => el.relationToFields);
+
+    return relations.length > 0
+      ? `${relations
+          .map((field) => {
+            return `import type { ${field.type}ModelDto } from './${field.type}.model.ts';`;
+          })
+          .join("\n")}
+      `
+      : "";
+  }
+
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
     return args.model.fields.find((field) => field.type === "Json")
       ? `import type { JsonValue } from "@prisma/client/runtime/library"`
@@ -307,10 +320,28 @@ export default class Transformer {
     };
   }
 
+  writeSupportType() {
+    return `
+       type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+        /**
+         * Make a type assembled from several types/utilities more readable.
+         * (e.g. the type will be shown as the final resulting type instead of as a bunch of type utils wrapping the initial type).
+         */
+        type FinalType<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
+        /**
+         * Merge keys of U into T, overriding value types with those in U.
+         */
+        type Override<T, U extends Partial<Record<keyof T, unknown>>> = FinalType<
+          Omit<T, keyof U> & U
+        >;`;
+  }
+
   generateWithAndWithoutIncludePrismaType(args: {
     model: PrismaDMMF.Model;
     pascalCasedModel: { name: string };
   }) {
+    const relations = args.model.fields.filter((el) => el.relationToFields);
+
     return args.model.fields
       .filter((field) => field.relationName)
       .map((field) => {
@@ -329,12 +360,25 @@ export default class Transformer {
             }
           }
 
-          type ${changeCase.pascalCase(field.type)}WithIncludes = PartialBy<
-            Prisma.${field.type}GetPayload<
-              typeof include${changeCase.pascalCase(field.type)}
+          type ${changeCase.pascalCase(field.type)}WithIncludes = Override<
+            PartialBy<
+              Prisma.${field.type}GetPayload<
+                typeof include${changeCase.pascalCase(field.type)}
+              >,
+              keyof typeof include${changeCase.pascalCase(field.type)}["include"]
             >,
-            keyof typeof include${changeCase.pascalCase(field.type)}["include"]
+            Override<
+              ${args.model.name}ModelDto,
+              {
+                ${relations
+                  .map((relation) => {
+                    return `${relation.name}: ${relation.type}ModelDto`;
+                  })
+                  .join("\n")}
+              }
+            >
           >;
+
         `;
       })
       .join("\n");
@@ -350,9 +394,9 @@ export default class Transformer {
           ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
+          ${this.generateDtoTypeImports({ model: camelCasedModel })}
 
-          type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
-          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;  
+          ${this.writeSupportType()}
 
           ${this.generateWithAndWithoutIncludePrismaType({
             model: camelCasedModel,
