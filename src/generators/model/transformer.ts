@@ -276,8 +276,8 @@ export default class Transformer {
     const keyValueList = args.model.fields.map((field) => {
       if (field.type === "DateTime") {
         return field.isList
-          ? `${field.name}: this._${field.name}.map((el => el.toISOString()))` // convert Date to string
-          : `${field.name}: this._${field.name}.toISOString()`; // convert Date to string
+          ? `${field.name}: this._${field.name}?.map((el) => el?.toISOString() ?? null) ?? null` // convert Date to string
+          : `${field.name}: this._${field.name}?.toISOString() ?? null`; // convert Date to string
       }
 
       return `${field.name}: this._${field.name}`;
