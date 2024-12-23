@@ -20,6 +20,19 @@ model User {
 
   posts Post[]
   books Book[]
+
+  initiatorUserNotification UserNotification[] @relation(name: "initiatorUser")
+  receivingUserNotification UserNotification[] @relation(name: "receivingUser")
+}
+
+model UserNotification {
+  id Int @id @default(autoincrement())
+
+  receivingUserId Int?
+  receivingUser   User? @relation(name: "receivingUser", fields: [receivingUserId], references: [id])
+
+  initiatorUserId Int?
+  initiatorUser   User? @relation(name: "initiatorUser", fields: [initiatorUserId], references: [id])
 }
 
 model Post {
@@ -106,4 +119,14 @@ model Book_Post {
   Post   Post @relation(fields: [postId], references: [id])
 
   @@unique([bookId, postId])
+}
+
+model OptionalDateTime {
+  id Int @id @default(autoincrement())
+
+  optionalDateTime DateTime?
+}
+
+model SameFieldName {
+  id Int @id @default(autoincrement())
 }
