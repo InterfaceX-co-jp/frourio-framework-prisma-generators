@@ -421,7 +421,7 @@ export default class Transformer {
         case "BigInt":
           return "bigint";
         case "Bytes":
-          return "Buffer";
+          return "ArrayBuffer";
         case args.field.type:
           if (args.field.relationName) {
             return `${args.field.type}WithIncludes`;
