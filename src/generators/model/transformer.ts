@@ -263,7 +263,7 @@ export default class Transformer {
       if (field.relationName) {
         field.relationFromFields?.forEach((relationField) => {
           mutatingList = mutatingList.filter((keyValue) => {
-            return !keyValue.includes(relationField);
+            return !keyValue.includes(changeCase.camelCase(relationField));
           });
         });
       }
