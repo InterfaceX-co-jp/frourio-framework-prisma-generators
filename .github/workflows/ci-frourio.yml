@@ -38,6 +38,7 @@ jobs:
           key: client-npm-${{ hashFiles('package-lock.json') }}
       - run: npm install
         if: steps.root-npm-cache.outputs.cache-hit != 'true'
+      - run: ./package.sh
       - run: npm run generate
       - run: npm run typecheck
       # - name: Test
