@@ -253,10 +253,6 @@ export default class Transformer {
             }`;
   }
 
-  private toCamelCase(input: string): string {
-    return input.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-  }
-
   private removeRelationFromFieldsId(args: {
     model: PrismaDMMF.Model;
     mutatingList: string[];
@@ -267,7 +263,7 @@ export default class Transformer {
       if (field.relationName) {
         field.relationFromFields?.forEach((relationField) => {
           mutatingList = mutatingList.filter((keyValue) => {
-            return !keyValue.includes(this.toCamelCase(relationField));
+            return !keyValue.includes(changeCase.camelCase(relationField));
           });
         });
       }
