@@ -1,0 +1,50 @@
+name: Test
+
+on: push
+
+jobs:
+  monorepo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      API_SERVER_PORT: 8080
+      API_ORIGIN: http://localhost:8080
+      API_BASE_PATH: /api
+      DATABASE_URL: postgresql://root:test@localhost:5432/test
+      TEST_DATABASE_URL: postgresql://root:test@localhost:5432/test
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_USER: root
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        id: root-npm-cache
+        with:
+          path: "node_modules"
+          key: client-npm-${{ hashFiles('package-lock.json') }}
+      - run: npm install
+        if: steps.root-npm-cache.outputs.cache-hit != 'true'
+      - run: npm run generate
+      - run: npm run typecheck
+      # - name: Test
+      #   run: |
+      #     export NODE_OPTIONS="--max_old_space_size=4000"
+      #     cd backend-api
+      #     npm run migrate:dev
+      #     npm run test
+      #   env:
+      #     API_JWT_SECRET: test_secret
