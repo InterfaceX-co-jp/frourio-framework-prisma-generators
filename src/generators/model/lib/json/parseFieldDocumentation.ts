@@ -1,7 +1,5 @@
-import type {
-  DMMF as PrismaDMMF,
-  ReadonlyDeep,
-} from "@prisma/generator-helper";
+import type { DMMF as PrismaDMMF } from "@prisma/generator-helper";
+import type { ReadonlyDeep } from "../../../utils/types";
 
 export const parseFieldDocumentation = (args: {
   field: ReadonlyDeep<PrismaDMMF.Field>;

@@ -1,7 +1,5 @@
-import type {
-  DMMF as PrismaDMMF,
-  ReadonlyDeep,
-} from "@prisma/generator-helper";
+import type { DMMF as PrismaDMMF } from "@prisma/generator-helper";
+import type { ReadonlyDeep } from "../utils/types";
 import { writeFileSafely } from "../utils/writeFileSafely";
 import * as changeCase from "change-case-all";
 import { parseFieldDocumentation } from "./lib/json/parseFieldDocumentation";
