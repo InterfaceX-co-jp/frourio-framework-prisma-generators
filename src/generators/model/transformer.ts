@@ -332,7 +332,7 @@ export default class Transformer {
             }
           }
 
-          type ${changeCase.pascalCase(field.type)}WithIncludes = PartialBy<
+          export type ${changeCase.pascalCase(field.type)}WithIncludes = PartialBy<
             Prisma.${field.type}GetPayload<
               typeof include${changeCase.pascalCase(field.type)}
             >,
