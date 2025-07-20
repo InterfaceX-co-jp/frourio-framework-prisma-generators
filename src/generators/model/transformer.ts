@@ -309,7 +309,7 @@ export default class Transformer {
     model: PrismaDMMF.Model;
     pascalCasedModel: { name: string };
   }) {
-    const fieldGenerationFrequency: Record<string, number> = {};
+    // const fieldGenerationFrequency: Record<string, number> = {};
 
     return args.model.fields
       .filter((field) => field.relationName)
@@ -318,9 +318,9 @@ export default class Transformer {
           (model) => model.name === field.type,
         );
 
-        if (fieldGenerationFrequency[field.type] >= 1) {
-          return;
-        }
+        // if (fieldGenerationFrequency[field.type] >= 1) {
+        //   return;
+        // }
         const result = `
           const include${changeCase.pascalCase(field.type)} = {
             include: {
@@ -339,7 +339,7 @@ export default class Transformer {
             keyof typeof include${changeCase.pascalCase(field.type)}["include"]
           >;
         `;
-        fieldGenerationFrequency[field.type] = 1;
+        // fieldGenerationFrequency[field.type] = 1;
 
         return result;
       })
