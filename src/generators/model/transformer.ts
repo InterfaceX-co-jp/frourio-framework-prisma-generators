@@ -259,12 +259,17 @@ export default class Transformer {
   }) {
     let keyValueList = args.model.fields.map((field) => {
       if (field.relationName) {
-        return `${changeCase.camelCase(field.name)}: args.${changeCase.camelCase(field.name)}`;
+        // Add non-null assertion for:
+        // - Required single relations (not optional)
+        // - All array relations (always present as arrays, never undefined)
+        const nullAssertion = field.isRequired || field.isList ? "!" : "";
+        return `${changeCase.camelCase(field.name)}: args.${changeCase.camelCase(field.name)}${nullAssertion}`;
       }
 
       if (field.type === "Decimal") {
         // Handle potential undefined from partial objects
-        return `${changeCase.camelCase(field.name)}: args.self.${field.name}?.toNumber()`;
+        const nullAssertion = field.isRequired ? "!" : "?";
+        return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion}.toNumber()`;
       }
 
       if (field.type === "Json" && field.documentation) {
@@ -273,11 +278,20 @@ export default class Transformer {
         });
 
         if (parsed) {
-          return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${parsed.type?.jsonType}`;
+          const nullAssertion = field.isRequired ? "!" : "";
+          return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as ${parsed.type?.jsonType}`;
         }
       }
 
-      return `${changeCase.camelCase(field.name)}: args.self.${field.name}`;
+      if (field.type === "Bytes") {
+        // Bytes type needs conversion from Buffer to ArrayBuffer
+        const nullAssertion = field.isRequired ? "!" : "";
+        const arrayBrackets = field.isList ? "[]" : "";
+        return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as ArrayBuffer${arrayBrackets}`;
+      }
+
+      const nullAssertion = field.isRequired ? "!" : "";
+      return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion}`;
     });
 
     const fields = this.removeRelationFromFieldsId({
