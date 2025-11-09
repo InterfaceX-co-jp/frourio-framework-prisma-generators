@@ -116,6 +116,8 @@ export default class Transformer {
   }
 
   private generateModelDtoType(args: { model: PrismaDMMF.Model }) {
+    const relationFields = args.model.fields.filter((field) => field.relationName);
+    
     let keyValueList = args.model.fields.map((field) => {
       if (field.relationName) {
         return this.renderKeyValueFieldStringFromDMMFField({
@@ -137,11 +139,55 @@ export default class Transformer {
       mutatingList: keyValueList,
     });
 
-    return `
+    let dtoTypes = `
         export type ${args.model.name}ModelDto = {
             ${fields.join("\n  ")}
         }
     `;
+    
+    // If there are relation fields, also generate a generic DTO type
+    if (relationFields.length > 0) {
+      const genericParams = [`TSelf extends Partial<Prisma${args.model.name}> = Prisma${args.model.name}`];
+      const genericNames = ['TSelf'];
+      
+      relationFields.forEach((field) => {
+        const genericName = `T${changeCase.pascalCase(field.name)}`;
+        const { defaultType, constraintType } = this.getRelationTypeMeta({ field });
+        genericParams.push(`${genericName} extends ${constraintType} = ${defaultType}`);
+        genericNames.push(genericName);
+      });
+      
+      // Create conditional fields for the DTO
+      const dtoFields = args.model.fields.map((field) => {
+        if (field.relationName) {
+          const genericName = `T${changeCase.pascalCase(field.name)}`;
+          const optionalSuffix = field.isRequired || field.isList ? "" : "?";
+          return `${changeCase.camelCase(field.name)}${optionalSuffix}: ${genericName}`;
+        }
+        
+        return this.renderKeyValueFieldStringFromDMMFField({
+          field,
+          overrideValue:
+            field.type === "DateTime"
+              ? `string${field.isList ? "[]" : ""}`
+              : undefined,
+        });
+      });
+      
+      const dtoFieldsFiltered = this.removeRelationFromFieldsId({
+        model: args.model,
+        mutatingList: dtoFields,
+      });
+      
+      dtoTypes += `
+        
+        export type ${args.model.name}ModelDtoWithRelations<${genericParams.join(", ")}> = {
+            ${dtoFieldsFiltered.join("\n  ")}
+        }
+      `;
+    }
+
+    return dtoTypes;
   }
 
   private generateModelGetterFields(args: { model: PrismaDMMF.Model }) {
@@ -304,8 +350,8 @@ export default class Transformer {
     const genericDeclaration = args.genericDeclaration ?? "";
     const genericUsage = args.genericUsage ?? "";
 
-    return `static fromPrismaValue${genericDeclaration}(args: ${args.model.name}ModelFromPrismaValueArgs${genericUsage}) {
-                return new ${args.model.name}Model({
+    return `static fromPrismaValue${genericDeclaration}(args: ${args.model.name}ModelFromPrismaValueArgs${genericUsage}): ${args.model.name}Model${genericUsage} {
+                return new ${args.model.name}Model${genericUsage}({
                     ${fields.join(",\n")}
                 });
             }`;
@@ -330,7 +376,12 @@ export default class Transformer {
     return mutatingList;
   }
 
-  private generateToDtoMethod(args: { model: PrismaDMMF.Model }) {
+  private generateToDtoMethod(args: {
+    model: PrismaDMMF.Model;
+    genericDeclaration?: string;
+  }) {
+    const relationFields = args.model.fields.filter((field) => field.relationName);
+    
     const keyValueList = args.model.fields.map((field) => {
       if (field.type === "DateTime") {
         return field.isList
@@ -346,6 +397,15 @@ export default class Transformer {
       mutatingList: keyValueList,
     });
 
+    // If there are relation fields, use class-level generics
+    if (relationFields.length > 0 && args.genericDeclaration) {
+      return `toDto(): ${args.model.name}ModelDtoWithRelations<TSelf, ${relationFields.map((f) => `T${changeCase.pascalCase(f.name)}`).join(", ")}> {
+            return {
+                ${fields.join(",\n")}
+            } as ${args.model.name}ModelDtoWithRelations<TSelf, ${relationFields.map((f) => `T${changeCase.pascalCase(f.name)}`).join(", ")}>;
+        }`;
+    }
+    
     return `toDto(): ${args.model.name}ModelDto {
             return {
                 ${fields.join(",\n")}
@@ -451,14 +511,14 @@ export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
           export type ${model.name}ModelFromPrismaValueArgs${fromPrismaValueType.genericDeclaration} = ${fromPrismaValueType.type}
 
-          export class ${model.name}Model {
+          export class ${model.name}Model${fromPrismaValueType.genericDeclaration} {
               ${this.generateModelFields({ model: camelCasedModel })}
 
               ${this.generateModelConstructor({ model: camelCasedModel })}
 
               ${fromPrismaValueMethod}
 
-              ${this.generateToDtoMethod({ model: camelCasedModel })}
+              ${this.generateToDtoMethod({ model: camelCasedModel, genericDeclaration: fromPrismaValueType.genericDeclaration })}
 
               ${this.generateModelGetterFields({ model: camelCasedModel })}
           }

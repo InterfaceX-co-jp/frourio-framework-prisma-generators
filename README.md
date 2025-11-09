@@ -331,3 +331,191 @@ const bookModel = BookModel.fromPrismaValue({
 - **Null Safety**: Handles nullable relations correctly
 - **Array Relations**: Properly types one-to-many relationships
 - **Type Inference**: Generic types are often automatically inferred from your Prisma queries
+
+## Dynamic DTO Types with `toDto()`
+
+When working with models that have relations, the `toDto()` method now returns a **dynamic DTO type** that accurately reflects which relations were actually loaded. This prevents frontend code from assuming relations exist when they were never fetched.
+
+### How It Works
+
+For models with relations, two DTO types are generated:
+
+1. **`ModelDto`**: Static type with all relations (legacy compatibility)
+2. **`ModelDtoWithRelations<...>`**: Generic type that reflects actual loaded relations
+
+The model class itself is generic, and `toDto()` uses those generics to return the correct DTO type.
+
+### Generated Types Example
+
+```ts
+// Static DTO (all relations)
+export type PostModelDto = {
+  id: number;
+  title: string;
+  author?: UserWithIncludes | null;
+  comments: CommentWithIncludes[];
+};
+
+// Dynamic DTO (reflects loaded relations)
+export type PostModelDtoWithRelations<
+  TSelf extends Partial<PrismaPost> = PrismaPost,
+  TAuthor extends UserWithIncludes | null | undefined = UserWithIncludes | null,
+  TComments extends CommentWithIncludes[] | undefined = CommentWithIncludes[]
+> = {
+  id: number;
+  title: string;
+  author?: TAuthor;
+  comments: TComments;
+};
+
+// Generic model class
+export class PostModel<
+  TSelf extends Partial<PrismaPost> = PrismaPost,
+  TAuthor extends UserWithIncludes | null | undefined = UserWithIncludes | null,
+  TComments extends CommentWithIncludes[] | undefined = CommentWithIncludes[]
+> {
+  // ...
+  toDto(): PostModelDtoWithRelations<TSelf, TAuthor, TComments> {
+    // Returns DTO with actual loaded relation types
+  }
+}
+```
+
+### Usage Examples
+
+#### 1. Post with No Relations Loaded
+
+```ts
+const post = await prisma.post.findUnique({ where: { id: 1 } });
+
+const postModel = PostModel.fromPrismaValue({
+  self: post,
+  author: undefined,
+  comments: undefined,
+});
+
+const dto = postModel.toDto();
+// Type: { id: number, title: string, author: undefined, comments: undefined }
+// ✅ Frontend knows author and comments are NOT loaded
+```
+
+#### 2. Post with Author Only
+
+```ts
+const post = await prisma.post.findUnique({
+  where: { id: 1 },
+  include: { author: true },
+});
+
+const postModel = PostModel.fromPrismaValue({
+  self: post,
+  author: post.author,
+  comments: undefined,
+});
+
+const dto = postModel.toDto();
+// Type: { id: number, title: string, author: UserWithIncludes | null, comments: undefined }
+// ✅ Frontend knows author MAY exist, but comments are NOT loaded
+```
+
+#### 3. Post with All Relations
+
+```ts
+const post = await prisma.post.findUnique({
+  where: { id: 1 },
+  include: {
+    author: true,
+    comments: true,
+  },
+});
+
+const postModel = PostModel.fromPrismaValue({
+  self: post,
+  author: post.author,
+  comments: post.comments,
+});
+
+const dto = postModel.toDto();
+// Type: { id: number, title: string, author: UserWithIncludes | null, comments: CommentWithIncludes[] }
+// ✅ Frontend knows all relations are loaded
+```
+
+### Benefits
+
+- **🎯 Type Safety**: Frontend gets accurate types based on what was actually loaded
+- **🚫 Prevents Bugs**: `undefined` type clearly indicates unloaded relations
+- **💡 IntelliSense**: IDE shows exactly which fields are available
+- **📝 Self-Documenting**: Type signature documents API response shape
+- **⚡ No Runtime Checks**: TypeScript catches missing data at compile time
+
+### Migration from Non-Generic DTOs
+
+If you're upgrading from an older version, your existing code will continue to work:
+
+```ts
+// Old code (still works)
+const post = PostModel.fromPrismaValue({ self: prismaPost });
+const dto = post.toDto();
+// Type: PostModelDto (legacy type with all relations)
+
+// New code (type-safe)
+const post = PostModel.fromPrismaValue({
+  self: prismaPost,
+  author: undefined,
+  comments: undefined,
+});
+const dto = post.toDto();
+// Type: PostModelDtoWithRelations<..., undefined, undefined>
+// Frontend knows these relations are NOT loaded
+```
+
+### Best Practices
+
+1. **Always specify relation parameters**: Even if `undefined`, be explicit
+   ```ts
+   // ✅ Good
+   PostModel.fromPrismaValue({
+     self: post,
+     author: undefined,
+     comments: undefined,
+   });
+   
+   // ❌ Avoid (loses type safety)
+   PostModel.fromPrismaValue({ self: post });
+   ```
+
+2. **Use the dynamic DTO type in API responses**:
+   ```ts
+   // API handler
+   async function getPost(id: number) {
+     const post = await prisma.post.findUnique({
+       where: { id },
+       include: { author: true },
+     });
+     
+     const model = PostModel.fromPrismaValue({
+       self: post,
+       author: post.author,
+       comments: undefined,
+     });
+     
+     return model.toDto();
+     // Return type automatically reflects loaded relations
+   }
+   ```
+
+3. **Frontend can trust the types**:
+   ```ts
+   const dto = await api.getPost(1);
+   
+   // TypeScript knows:
+   if (dto.author !== undefined) {
+     // Author was loaded, safe to access
+     console.log(dto.author.name);
+   }
+   
+   if (dto.comments !== undefined) {
+     // Comments were loaded, safe to iterate
+     dto.comments.forEach(comment => ...);
+   }
+   ```
