@@ -21,6 +21,10 @@ export default class Transformer {
     this._additionalTypePath = args.path;
   }
 
+  private generateUtilityTypesImport() {
+    return `import type { Omit, PartialBy } from './utilityTypes';`;
+  }
+
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
     return args.model.fields.find((field) => field.type === "Json")
       ? `import type { JsonValue } from "@prisma/client/runtime/library"`
@@ -205,6 +209,12 @@ export default class Transformer {
     const genericNames: string[] = [];
     const genericNameByField: Record<string, string> = {};
 
+    // Add TSelf generic parameter for partial support
+    genericDeclarations.push(
+      `TSelf extends Partial<Prisma${args.model.name}> = Prisma${args.model.name}`,
+    );
+    genericNames.push('TSelf');
+
     relationFields.forEach((field) => {
       const genericName = `T${changeCase.pascalCase(field.name)}`;
       const { defaultType, constraintType } = this.getRelationTypeMeta({
@@ -230,7 +240,7 @@ export default class Transformer {
 
     return {
       type: `{
-              self: Prisma${args.model.name},
+              self: TSelf,
               ${fields.join(",\n")}
             }`,
       genericDeclaration:
@@ -253,7 +263,8 @@ export default class Transformer {
       }
 
       if (field.type === "Decimal") {
-        return `${changeCase.camelCase(field.name)}: args.self.${field.name}.toNumber()`;
+        // Handle potential undefined from partial objects
+        return `${changeCase.camelCase(field.name)}: args.self.${field.name}?.toNumber()`;
       }
 
       if (field.type === "Json" && field.documentation) {
@@ -380,6 +391,18 @@ export default class Transformer {
   }
 
   async transform() {
+    // Write utility types file to the output directory
+    writeFileSafely(
+      `${this._outputPath}/utilityTypes.ts`,
+      `/**
+ * Utility types used by generated model files
+ */
+
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+`,
+    );
+
     for (const model of this._models) {
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
       const fromPrismaValueType = this.generateStaticFromPrismaValueType({
@@ -394,12 +417,10 @@ export default class Transformer {
       writeFileSafely(
         `${this._outputPath}/${model.name}.model.ts`,
         `
+          ${this.generateUtilityTypesImport()}
           ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
-
-          type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
-          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
           ${this.generateWithAndWithoutIncludePrismaType({
             model: camelCasedModel,
@@ -444,20 +465,20 @@ export default class Transformer {
     if (args.field.isList) {
       return {
         defaultType: `${baseType}[]`,
-        constraintType: `unknown[]`,
+        constraintType: `${baseType}[] | undefined`,
       };
     }
 
     if (args.field.isRequired) {
       return {
         defaultType: baseType,
-        constraintType: `unknown`,
+        constraintType: `${baseType} | undefined`,
       };
     }
 
     return {
       defaultType: `${baseType} | null`,
-      constraintType: `unknown | null`,
+      constraintType: `${baseType} | null | undefined`,
     };
   }
 
