@@ -284,10 +284,12 @@ export default class Transformer {
       }
 
       if (field.type === "Bytes") {
-        // Bytes type needs conversion from Buffer to ArrayBuffer
+        // Bytes type needs conversion from Buffer to ArrayBuffer (use double assertion for arrays)
         const nullAssertion = field.isRequired ? "!" : "";
-        const arrayBrackets = field.isList ? "[]" : "";
-        return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as ArrayBuffer${arrayBrackets}`;
+        if (field.isList) {
+          return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as unknown as ArrayBuffer[]`;
+        }
+        return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as ArrayBuffer`;
       }
 
       const nullAssertion = field.isRequired ? "!" : "";
