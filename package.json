@@ -8,6 +8,8 @@
   "type": "commonjs",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "typecheck:generated": "tsc --project tsconfig.generated.json --noEmit",
+    "typecheck:all": "npm run typecheck && npm run typecheck:generated",
     "generate": "tsc && npm run prisma:generate",
     "prisma:generate": "npx prisma generate",
     "check-uncommitted": "git diff-index --quiet HEAD --",

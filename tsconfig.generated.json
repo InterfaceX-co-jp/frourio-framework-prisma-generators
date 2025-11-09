@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "rootDir": "."
+  },
+  "include": [
+    "prisma/__generated__/**/*.ts"
+  ],
+  "exclude": []
+}

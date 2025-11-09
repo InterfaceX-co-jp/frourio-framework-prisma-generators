@@ -48,9 +48,11 @@ export default class Transformer {
       }
     });
 
-    return `import { 
+    // Remove .ts extension from import path for TypeScript compatibility
+    const importPath = this._additionalTypePath.replace(/\.ts$/, '');
+    return `import {
               ${[...new Set(imports)].filter((i) => i).join(", ")}
-            } from '${this._additionalTypePath}';`;
+            } from '${importPath}';`;
   }
 
   private get jsonFields() {
