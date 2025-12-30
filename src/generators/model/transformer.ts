@@ -7,7 +7,7 @@ import { parseFieldDocumentation } from "./lib/json/parseFieldDocumentation";
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
-  private _additionalTypePath: string = "../../@additionalType/index.ts";
+  private _additionalTypePath: string = "../../@additionalType/index";
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
     this._models = args.models;
@@ -22,9 +22,8 @@ export default class Transformer {
   }
 
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
-    return args.model.fields.find((field) => field.type === "Json")
-      ? `import type { JsonValue } from "@prisma/client/runtime/library"`
-      : "";
+    // JsonValue is now accessed via Prisma.JsonValue in Prisma Client v7+
+    return "";
   }
 
   private generateAdditionalTypeImport(args: { model: PrismaDMMF.Model }) {
@@ -44,8 +43,14 @@ export default class Transformer {
       }
     });
 
-    return `import { 
-              ${[...new Set(imports)].filter((i) => i).join(", ")}
+    const filteredImports = [...new Set(imports)].filter((i) => i);
+    
+    if (filteredImports.length === 0) {
+      return "";
+    }
+
+    return `import {
+              ${filteredImports.join(", ")}
             } from '${this._additionalTypePath}';`;
   }
 
@@ -232,7 +237,7 @@ export default class Transformer {
         });
 
         if (parsed) {
-          return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${parsed.type?.jsonType}`;
+          return `${changeCase.camelCase(field.name)}: args.self.${field.name} as unknown as ${parsed.type?.jsonType}`;
         }
       }
 
@@ -409,7 +414,7 @@ export default class Transformer {
         case "DateTime":
           return "Date";
         case "Json":
-          return "JsonValue";
+          return "Prisma.JsonValue";
         case "Float":
           return "number";
         case "Enum":
