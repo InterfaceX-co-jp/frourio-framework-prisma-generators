@@ -1,6 +1,6 @@
 {
   "name": "frourio-framework-prisma-generators",
-  "version": "6.9.0-rev1",
+  "version": "7.2.0",
   "description": "",
   "bin": {
     "frourio-framework-prisma-model-generator": "lib/generators/model/generator.js"
@@ -28,17 +28,18 @@
     "url": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators/issues"
   },
   "homepage": "https://github.com/InterfaceX-co-jp/frourio-framework-prisma-generators#readme",
+  "dependencies": {
+    "@prisma/client": "^7.2.0",
+    "@prisma/generator-helper": "^7.2.0",
+    "@prisma/internals": "^7.2.0",
+    "change-case-all": "^2.1.0",
+    "prettier": "^3.5.3"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "prisma": "^7.2.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.1",
     "typescript": "^5.8.3"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.9.0",
-    "@prisma/generator-helper": "^6.9.0",
-    "@prisma/internals": "^6.9.0",
-    "change-case-all": "^2.1.0",
-    "prettier": "^3.5.3"
   }
 }

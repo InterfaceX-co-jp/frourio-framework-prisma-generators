@@ -3,7 +3,7 @@
 - Can be compatible with `Json` type field by specifying type 
 
 ## Requirements
-- prisma, @prisma/client@5.20.0 **(both needs to be same version!)**
+- prisma, @prisma/client@7.2.0 or later **(both need to be same version!)**
 
 ## Install
 
@@ -16,7 +16,7 @@ npm install -D frourio-framework-prisma-generators
 generator frourio_framework_prisma_model_generator {
     provider = "frourio-framework-prisma-model-generator"
     output   = "__generated__/models"
-    additionalTypePath = "./@additionalType/index.ts" // If you need to type Json type field
+    additionalTypePath = "./@additionalType/index" // If you need to type Json type field
 }
 ```
 
@@ -48,20 +48,19 @@ export type JsonArray = JsonObject[];
 - Now your model can type the Json field with your annotated type
 
 ```ts
-import type { JsonValue } from '@prisma/client/runtime/library';
-import { JsonField as PrismaJsonField } from '@prisma/client';
-import { JsonObject, JsonArray } from '../../@additionalType/index.ts';
+import { Prisma, JsonField as PrismaJsonField } from '@prisma/client';
+import { JsonObject, JsonArray } from '../../@additionalType/index';
 
-export interface JsonFieldModelDto {
+export type JsonFieldModelDto = {
   id: number;
-  rawJson: JsonValue;
+  rawJson: Prisma.JsonValue;
   jsonObject: JsonObject;
   jsonArray: JsonArray;
-}
+};
 
 export type JsonFieldModelConstructorArgs = {
   id: number;
-  rawJson: JsonValue;
+  rawJson: Prisma.JsonValue;
   jsonObject: JsonObject;
   jsonArray: JsonArray;
 };
@@ -72,7 +71,7 @@ export type JsonFieldModelFromPrismaValueArgs = {
 
 export class JsonFieldModel {
   private readonly _id: number;
-  private readonly _rawJson: JsonValue;
+  private readonly _rawJson: Prisma.JsonValue;
   private readonly _jsonObject: JsonObject;
   private readonly _jsonArray: JsonArray;
 
@@ -87,8 +86,8 @@ export class JsonFieldModel {
     return new JsonFieldModel({
       id: args.self.id,
       rawJson: args.self.rawJson,
-      jsonObject: args.self.jsonObject as JsonObject,
-      jsonArray: args.self.jsonArray as JsonArray,
+      jsonObject: args.self.jsonObject as unknown as JsonObject,
+      jsonArray: args.self.jsonArray as unknown as JsonArray,
     });
   }
 
