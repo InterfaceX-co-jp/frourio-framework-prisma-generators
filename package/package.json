@@ -1,6 +1,6 @@
 {
   "name": "frourio-framework-prisma-generators",
-  "version": "6.9.0-rev1",
+  "version": "6.19.0-rev1",
   "description": "",
   "bin": {
     "frourio-framework-prisma-model-generator": "lib/generators/model/generator.js"
@@ -8,6 +8,8 @@
   "type": "commonjs",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "typecheck:generated": "tsc --project tsconfig.generated.json --noEmit",
+    "typecheck:all": "npm run typecheck && npm run typecheck:generated",
     "generate": "tsc && npm run prisma:generate",
     "prisma:generate": "npx prisma generate",
     "check-uncommitted": "git diff-index --quiet HEAD --",
@@ -35,9 +37,9 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@prisma/client": "^6.9.0",
-    "@prisma/generator-helper": "^6.9.0",
-    "@prisma/internals": "^6.9.0",
+    "@prisma/client": "^6.19.0",
+    "@prisma/generator-helper": "^6.19.0",
+    "@prisma/internals": "^6.19.0",
     "change-case-all": "^2.1.0",
     "prettier": "^3.5.3"
   }

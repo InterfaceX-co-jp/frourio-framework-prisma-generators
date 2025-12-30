@@ -21,6 +21,10 @@ export default class Transformer {
     this._additionalTypePath = args.path;
   }
 
+  private generateUtilityTypesImport() {
+    return `import type { Omit, PartialBy } from './utilityTypes';`;
+  }
+
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
     return args.model.fields.find((field) => field.type === "Json")
       ? `import type { JsonValue } from "@prisma/client/runtime/library"`
@@ -44,9 +48,11 @@ export default class Transformer {
       }
     });
 
-    return `import { 
+    // Remove .ts extension from import path for TypeScript compatibility
+    const importPath = this._additionalTypePath.replace(/\.ts$/, '');
+    return `import {
               ${[...new Set(imports)].filter((i) => i).join(", ")}
-            } from '${this._additionalTypePath}';`;
+            } from '${importPath}';`;
   }
 
   private get jsonFields() {
@@ -112,6 +118,8 @@ export default class Transformer {
   }
 
   private generateModelDtoType(args: { model: PrismaDMMF.Model }) {
+    const relationFields = args.model.fields.filter((field) => field.relationName);
+    
     let keyValueList = args.model.fields.map((field) => {
       if (field.relationName) {
         return this.renderKeyValueFieldStringFromDMMFField({
@@ -133,11 +141,55 @@ export default class Transformer {
       mutatingList: keyValueList,
     });
 
-    return `
+    let dtoTypes = `
         export type ${args.model.name}ModelDto = {
             ${fields.join("\n  ")}
         }
     `;
+    
+    // If there are relation fields, also generate a generic DTO type
+    if (relationFields.length > 0) {
+      const genericParams = [`TSelf extends Partial<Prisma${args.model.name}> = Prisma${args.model.name}`];
+      const genericNames = ['TSelf'];
+      
+      relationFields.forEach((field) => {
+        const genericName = `T${changeCase.pascalCase(field.name)}`;
+        const { defaultType, constraintType } = this.getRelationTypeMeta({ field });
+        genericParams.push(`${genericName} extends ${constraintType} = ${defaultType}`);
+        genericNames.push(genericName);
+      });
+      
+      // Create conditional fields for the DTO
+      const dtoFields = args.model.fields.map((field) => {
+        if (field.relationName) {
+          const genericName = `T${changeCase.pascalCase(field.name)}`;
+          const optionalSuffix = field.isRequired || field.isList ? "" : "?";
+          return `${changeCase.camelCase(field.name)}${optionalSuffix}: ${genericName}`;
+        }
+        
+        return this.renderKeyValueFieldStringFromDMMFField({
+          field,
+          overrideValue:
+            field.type === "DateTime"
+              ? `string${field.isList ? "[]" : ""}`
+              : undefined,
+        });
+      });
+      
+      const dtoFieldsFiltered = this.removeRelationFromFieldsId({
+        model: args.model,
+        mutatingList: dtoFields,
+      });
+      
+      dtoTypes += `
+        
+        export type ${args.model.name}ModelDtoWithRelations<${genericParams.join(", ")}> = {
+            ${dtoFieldsFiltered.join("\n  ")}
+        }
+      `;
+    }
+
+    return dtoTypes;
   }
 
   private generateModelGetterFields(args: { model: PrismaDMMF.Model }) {
@@ -199,31 +251,73 @@ export default class Transformer {
   }
 
   private generateStaticFromPrismaValueType(args: { model: PrismaDMMF.Model }) {
-    let keyValueList = args.model.fields
-      .filter((field) => field.relationName)
-      .map((field) => {
-        return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: ${changeCase.pascalCase(field.type)}WithIncludes${field.isList ? "[]" : ""}`;
+    const relationFields = args.model.fields.filter((field) => field.relationName);
+
+    const genericDeclarations: string[] = [];
+    const genericNames: string[] = [];
+    const genericNameByField: Record<string, string> = {};
+
+    // Add TSelf generic parameter for partial support
+    genericDeclarations.push(
+      `TSelf extends Partial<Prisma${args.model.name}> = Prisma${args.model.name}`,
+    );
+    genericNames.push('TSelf');
+
+    relationFields.forEach((field) => {
+      const genericName = `T${changeCase.pascalCase(field.name)}`;
+      const { defaultType, constraintType } = this.getRelationTypeMeta({
+        field,
       });
+
+      genericNameByField[field.name] = genericName;
+      genericNames.push(genericName);
+      genericDeclarations.push(
+        `${genericName} extends ${constraintType} = ${defaultType}`,
+      );
+    });
+
+    const keyValueList = relationFields.map((field) => {
+      const optionalSuffix = field.isRequired ? "" : "?";
+      return `${changeCase.camelCase(field.name)}${optionalSuffix}: ${genericNameByField[field.name]}`;
+    });
 
     const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
-    return `{
-              self: Prisma${args.model.name},
+    return {
+      type: `{
+              self: TSelf,
               ${fields.join(",\n")}
-            }`;
+            }`,
+      genericDeclaration:
+        genericDeclarations.length > 0
+          ? `<${genericDeclarations.join(", ")}>`
+          : "",
+      genericUsage:
+        genericNames.length > 0 ? `<${genericNames.join(", ")}>` : "",
+    };
   }
 
-  private generateStaticFromPrismaValue(args: { model: PrismaDMMF.Model }) {
+  private generateStaticFromPrismaValue(args: {
+    model: PrismaDMMF.Model;
+    genericDeclaration?: string;
+    genericUsage?: string;
+  }) {
     let keyValueList = args.model.fields.map((field) => {
       if (field.relationName) {
-        return `${changeCase.camelCase(field.name)}: args.${changeCase.camelCase(field.name)}`;
+        // Add non-null assertion for:
+        // - Required single relations (not optional)
+        // - All array relations (always present as arrays, never undefined)
+        const nullAssertion = field.isRequired || field.isList ? "!" : "";
+        return `${changeCase.camelCase(field.name)}: args.${changeCase.camelCase(field.name)}${nullAssertion}`;
       }
 
       if (field.type === "Decimal") {
-        return `${changeCase.camelCase(field.name)}: args.self.${field.name}.toNumber()`;
+        // Handle potential undefined from partial objects
+        const nullAssertion = field.isRequired ? "!" : "?";
+        return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion}.toNumber()`;
       }
 
       if (field.type === "Json" && field.documentation) {
@@ -232,11 +326,22 @@ export default class Transformer {
         });
 
         if (parsed) {
-          return `${changeCase.camelCase(field.name)}: args.self.${field.name} as ${parsed.type?.jsonType}`;
+          const nullAssertion = field.isRequired ? "!" : "";
+          return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as ${parsed.type?.jsonType}`;
         }
       }
 
-      return `${changeCase.camelCase(field.name)}: args.self.${field.name}`;
+      if (field.type === "Bytes") {
+        // Bytes type needs conversion from Buffer to ArrayBuffer (use double assertion for arrays)
+        const nullAssertion = field.isRequired ? "!" : "";
+        if (field.isList) {
+          return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as unknown as ArrayBuffer[]`;
+        }
+        return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion} as ArrayBuffer`;
+      }
+
+      const nullAssertion = field.isRequired ? "!" : "";
+      return `${changeCase.camelCase(field.name)}: args.self.${field.name}${nullAssertion}`;
     });
 
     const fields = this.removeRelationFromFieldsId({
@@ -244,8 +349,11 @@ export default class Transformer {
       mutatingList: keyValueList,
     });
 
-    return `static fromPrismaValue(args: ${args.model.name}ModelFromPrismaValueArgs) {
-                return new ${args.model.name}Model({
+    const genericDeclaration = args.genericDeclaration ?? "";
+    const genericUsage = args.genericUsage ?? "";
+
+    return `static fromPrismaValue${genericDeclaration}(args: ${args.model.name}ModelFromPrismaValueArgs${genericUsage}): ${args.model.name}Model${genericUsage} {
+                return new ${args.model.name}Model${genericUsage}({
                     ${fields.join(",\n")}
                 });
             }`;
@@ -270,7 +378,12 @@ export default class Transformer {
     return mutatingList;
   }
 
-  private generateToDtoMethod(args: { model: PrismaDMMF.Model }) {
+  private generateToDtoMethod(args: {
+    model: PrismaDMMF.Model;
+    genericDeclaration?: string;
+  }) {
+    const relationFields = args.model.fields.filter((field) => field.relationName);
+    
     const keyValueList = args.model.fields.map((field) => {
       if (field.type === "DateTime") {
         return field.isList
@@ -286,7 +399,16 @@ export default class Transformer {
       mutatingList: keyValueList,
     });
 
-    return `toDto() {
+    // If there are relation fields, use class-level generics
+    if (relationFields.length > 0 && args.genericDeclaration) {
+      return `toDto(): ${args.model.name}ModelDtoWithRelations<TSelf, ${relationFields.map((f) => `T${changeCase.pascalCase(f.name)}`).join(", ")}> {
+            return {
+                ${fields.join(",\n")}
+            } as ${args.model.name}ModelDtoWithRelations<TSelf, ${relationFields.map((f) => `T${changeCase.pascalCase(f.name)}`).join(", ")}>;
+        }`;
+    }
+    
+    return `toDto(): ${args.model.name}ModelDto {
             return {
                 ${fields.join(",\n")}
             };
@@ -347,18 +469,36 @@ export default class Transformer {
   }
 
   async transform() {
+    // Write utility types file to the output directory
+    writeFileSafely(
+      `${this._outputPath}/utilityTypes.ts`,
+      `/**
+ * Utility types used by generated model files
+ */
+
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+`,
+    );
+
     for (const model of this._models) {
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
+      const fromPrismaValueType = this.generateStaticFromPrismaValueType({
+        model: camelCasedModel,
+      });
+      const fromPrismaValueMethod = this.generateStaticFromPrismaValue({
+        model,
+        genericDeclaration: fromPrismaValueType.genericDeclaration,
+        genericUsage: fromPrismaValueType.genericUsage,
+      });
 
       writeFileSafely(
         `${this._outputPath}/${model.name}.model.ts`,
         `
+          ${this.generateUtilityTypesImport()}
           ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
-
-          type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
-          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;  
 
           ${this.generateWithAndWithoutIncludePrismaType({
             model: camelCasedModel,
@@ -371,16 +511,16 @@ export default class Transformer {
 
           export type ${model.name}ModelConstructorArgs = ${this.generateModelConstructorType({ model: camelCasedModel })}
 
-          export type ${model.name}ModelFromPrismaValueArgs = ${this.generateStaticFromPrismaValueType({ model: camelCasedModel })}
+          export type ${model.name}ModelFromPrismaValueArgs${fromPrismaValueType.genericDeclaration} = ${fromPrismaValueType.type}
 
-          export class ${model.name}Model {
+          export class ${model.name}Model${fromPrismaValueType.genericDeclaration} {
               ${this.generateModelFields({ model: camelCasedModel })}
 
               ${this.generateModelConstructor({ model: camelCasedModel })}
 
-              ${this.generateStaticFromPrismaValue({ model })}
+              ${fromPrismaValueMethod}
 
-              ${this.generateToDtoMethod({ model: camelCasedModel })}
+              ${this.generateToDtoMethod({ model: camelCasedModel, genericDeclaration: fromPrismaValueType.genericDeclaration })}
 
               ${this.generateModelGetterFields({ model: camelCasedModel })}
           }
@@ -395,6 +535,29 @@ export default class Transformer {
           console.error(e);
         });
     }
+  }
+
+  private getRelationTypeMeta(args: { field: PrismaDMMF.Field }) {
+    const baseType = `${changeCase.pascalCase(args.field.type)}WithIncludes`;
+
+    if (args.field.isList) {
+      return {
+        defaultType: `${baseType}[]`,
+        constraintType: `${baseType}[] | undefined`,
+      };
+    }
+
+    if (args.field.isRequired) {
+      return {
+        defaultType: baseType,
+        constraintType: `${baseType} | undefined`,
+      };
+    }
+
+    return {
+      defaultType: `${baseType} | null`,
+      constraintType: `${baseType} | null | undefined`,
+    };
   }
 
   private mapPrismaValueType(args: { field: PrismaDMMF.Field }) {
