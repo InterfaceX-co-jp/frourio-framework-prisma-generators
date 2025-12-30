@@ -4,13 +4,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = "file:./dev.db"
 }
 
 generator model {
   provider           = "node ./lib/generators/model/generator.js"
   output             = "./__generated__/model"
-  additionalTypePath = "./@additionalType/index.ts"
+  additionalTypePath = "./@additionalType/index"
 }
 
 model User {
@@ -107,6 +106,18 @@ model JsonField {
   rawJson    Json
   jsonObject Json /// @json(type: [JsonObject])
   jsonArray  Json /// @json(type: [JsonArray])
+}
+
+model JsonFieldOnly {
+  id Int @id @default(autoincrement())
+
+  data Json
+}
+
+model JsonFieldWithAdditionalType {
+  id Int @id @default(autoincrement())
+
+  data Json /// @json(type: [JsonObject])
 }
 
 model Book_Post {
