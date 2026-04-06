@@ -45,5 +45,6 @@ export async function generate(options: GeneratorOptions) {
     await transformer.transform();
   } catch (e) {
     console.error(e);
+    process.exit(1);
   }
 }

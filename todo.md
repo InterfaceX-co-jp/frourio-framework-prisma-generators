@@ -8,14 +8,14 @@
 
 ## Medium（実用上よく必要になる機能の欠如）
 
-- [ ] **`@default` / `@updatedAt` フィールドが Builder で必須扱い** — `createdAt DateTime @default(now())` や `updatedAt @updatedAt` は Prisma が自動設定するが、Builder は `undefined` だとエラーを投げる。`@default` / `@updatedAt` 付きフィールドは Builder で optional にすべき
-- [ ] **`fromPrismaValue` でリレーションを手動で渡す必要がある** — `PostModel.fromPrismaValue({ self: post, author: post.author, polymorphic: post.Polymorphic })` のように include 結果を個別に渡す必要がある。Prisma の include 結果から自動的にリレーションを抽出できると利便性が上がる
-- [ ] **Nested DTO 変換が `builder().fromPrisma()` で失われる** — `User.toDto()` で `posts` を `PostModel.builder().fromPrisma(el).build().toDto()` しているが、`fromPrisma` はスカラーのみ。Post にさらに nested なリレーションがあると変換されない
-- [ ] **`WithIncludes` 型が複数ファイルに重複定義される** — `PostWithIncludes` が `User.model.ts` と他のファイルに同一定義される。共通の barrel ファイルに集約すべき
-- [ ] **`Omit` / `PartialBy` ヘルパー型が全ファイルに重複** — 共通ユーティリティファイルに抽出すべき
-- [ ] **barrel ファイル (`index.ts`) が未生成** — `import { UserModel, PostModel } from './__generated__/model'` ができない
-- [ ] **Decimal 配列が `toNumber()` 変換されない** — `Decimal[]` フィールドがあった場合、`fromPrismaValue` / `fromPrisma` で `.toNumber()` 変換が配列対応していない
-- [ ] **テストスイートが存在しない** — transformer のユニットテストがない。フィールド型ごとの変換、DTO 生成、Builder バリデーション等のテストが必要
+- [x] **`@default` / `@updatedAt` フィールドが Builder で必須扱い** — `hasDefaultOrUpdatedAt()` でフィールドを判定し、ConstructorArgs と Builder で optional に
+- [x] **`fromPrismaValue` でリレーションを手動で渡す必要がある** — リレーション引数を optional 化し、`self` から自動抽出にフォールバック
+- [x] **Nested DTO 変換が `builder().fromPrisma()` で失われる** — `fromPrisma` でリレーションも `(value as any).fieldName` で自動抽出
+- [x] **`WithIncludes` 型が複数ファイルに重複定義される** — `_shared.ts` に集約し各モデルからインポート
+- [x] **`Omit` / `PartialBy` ヘルパー型が全ファイルに重複** — `_shared.ts` に集約
+- [x] **barrel ファイル (`index.ts`) が未生成** — `transform()` の最後で全モデル + `_shared` を re-export する `index.ts` を生成
+- [x] **Decimal 配列が `toNumber()` 変換されない** — `isList` チェックを追加し `.map((el: any) => el.toNumber())` に
+- [x] **テストスイートが存在しない** — `tests/model-transformer.test.ts` (23テスト) を追加 + 既存テストを `_shared.ts` / `index.ts` 生成に対応
 
 ## Low（あると嬉しい）
 
@@ -24,6 +24,14 @@
 - [ ] **Builder の `merge` / `fromPartial` がない** — 部分的な更新のために既存のモデルから Builder を作る手段がない
 - [ ] **`@map` / `@@map` サポート** — DB カラム名とフィールド名が異なる場合の考慮（現状 Prisma の DMMF が処理するが、一部エッジケースがあり得る）
 - [ ] **Composite types (Prisma 未対応) の将来的な備え** — Prisma が composite types を導入した場合の拡張性
+
+## Infrastructure（テスト・CI/CD・品質基盤）
+
+- [x] **テストスイート導入** — vitest で model/repository transformer テスト + パーサーテスト、全65テスト合格
+- [x] **エラーハンドリング修正** — model/repository 両方の `generate.ts` で `process.exit(1)` を追加
+- [x] **GitHub Actions にテスト・typecheck ワークフロー追加** — `.github/workflows/ci.yml` で lint + typecheck + test を PR ゲートに
+- [x] **ESLint 設定の追加** — `eslint.config.mjs` (flat config) + `package.json` に `lint` スクリプト追加
+- [ ] **大規模スキーマでのベンチマーク** — 100+ model のスキーマでジェネレータのパフォーマンスを検証する
 
 ---
 

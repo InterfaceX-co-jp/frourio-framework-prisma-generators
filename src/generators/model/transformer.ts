@@ -349,7 +349,7 @@ export default class Transformer {
     let keyValueList = args.model.fields
       .filter((field) => field.relationName)
       .map((field) => {
-        return `${changeCase.camelCase(field.name)}${field.isRequired ? "" : "?"}: ${changeCase.pascalCase(field.type)}WithIncludes${field.isList ? "[]" : ""}`;
+        return `${changeCase.camelCase(field.name)}?: ${changeCase.pascalCase(field.type)}WithIncludes${field.isList ? "[]" : ""}`;
       });
 
     const fields = this.removeRelationFromFieldsId({
@@ -358,7 +358,7 @@ export default class Transformer {
     });
 
     return `{
-              self: Prisma${args.model.name},
+              self: Prisma${args.model.name} & Record<string, unknown>,
               ${fields.join(",\n")}
             }`;
   }
@@ -385,10 +385,13 @@ export default class Transformer {
       const accessor = `args.self.${field.name}`;
 
       if (field.relationName) {
-        return `${camelName}: args.${camelName}`;
+        return `${camelName}: args.${camelName} ?? args.self.${field.name} as any`;
       }
 
       if (field.type === "Decimal") {
+        if (field.isList) {
+          return `${camelName}: ${this.wrapNullable({ field, accessor, conversion: ".map((el: any) => el.toNumber())" })}`;
+        }
         return `${camelName}: ${this.wrapNullable({ field, accessor, conversion: ".toNumber()" })}`;
       }
 
@@ -518,12 +521,17 @@ export default class Transformer {
     model: PrismaDMMF.Model;
     originalModelName: string;
   }) {
+    const originalModel = this._models.find((m) => m.name === args.originalModelName);
+
     const scalarAssignments = args.model.fields
       .filter((field) => !field.relationName)
       .map((field) => {
         const accessor = `value.${field.name}`;
 
         if (field.type === "Decimal") {
+          if (field.isList) {
+            return `this._args.${field.name} = ${this.wrapNullable({ field, accessor, conversion: ".map((el: any) => el.toNumber())" })};`;
+          }
           return `this._args.${field.name} = ${this.wrapNullable({ field, accessor, conversion: ".toNumber()" })};`;
         }
 
@@ -537,13 +545,32 @@ export default class Transformer {
         return `this._args.${field.name} = ${accessor};`;
       });
 
-    const filteredAssignments = this.removeRelationFromFieldsId({
+    const relationAssignments = args.model.fields
+      .filter((field) => field.relationName)
+      .map((field) => {
+        const camelName = changeCase.camelCase(field.name);
+        // Find the original (non-camelCased) field name for Prisma property access
+        const originalField = originalModel?.fields.find(
+          (f) => changeCase.camelCase(f.name) === camelName,
+        );
+        const originalFieldName = originalField?.name ?? field.name;
+        return `this._args.${camelName} = (value as any).${originalFieldName};`;
+      });
+
+    const filteredScalar = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: scalarAssignments,
     });
 
-    return `fromPrisma(value: Prisma${args.originalModelName}): this {
-            ${filteredAssignments.join("\n            ")}
+    const filteredRelation = this.removeRelationFromFieldsId({
+      model: args.model,
+      mutatingList: relationAssignments,
+    });
+
+    const allAssignments = [...filteredScalar, ...filteredRelation];
+
+    return `fromPrisma(value: Prisma${args.originalModelName} & Record<string, unknown>): this {
+            ${allAssignments.join("\n            ")}
             return this;
         }`;
   }
@@ -763,8 +790,83 @@ export default class Transformer {
       .join("\n");
   }
 
-  async transform() {
+  private generateSharedFile() {
+    // Collect all unique WithIncludes types across all models
+    const generatedTypes = new Set<string>();
+    const withIncludesBlocks: string[] = [];
+    const prismaImports = new Set<string>();
+
     for (const model of this._models) {
+      for (const field of model.fields) {
+        if (!field.relationName || generatedTypes.has(field.type)) continue;
+
+        const selectingModel = this._models.find((m) => m.name === field.type);
+        if (!selectingModel) continue;
+
+        const pascalType = changeCase.pascalCase(field.type);
+        prismaImports.add(field.type);
+
+        withIncludesBlocks.push(`
+          const include${pascalType} = {
+            include: {
+              ${selectingModel.fields
+                .filter((el) => el.relationName)
+                .map((f) => `${f.name}: true`)
+                .join(",\n              ")}
+            }
+          }
+
+          export type ${pascalType}WithIncludes = PartialBy<
+            Prisma.${field.type}GetPayload<
+              typeof include${pascalType}
+            >,
+            keyof typeof include${pascalType}["include"]
+          >;
+        `);
+
+        generatedTypes.add(field.type);
+      }
+    }
+
+    const prismaImportList = [...prismaImports]
+      .map((name) => `${name} as Prisma${name}`)
+      .join(", ");
+
+    return `
+      import { Prisma, ${prismaImportList} } from '@prisma/client';
+
+      type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+      export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+      ${withIncludesBlocks.join("\n")}
+    `;
+  }
+
+  private generateSharedImports(args: { model: PrismaDMMF.Model }): string {
+    const imports = new Set<string>();
+    imports.add("PartialBy");
+
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        imports.add(`${changeCase.pascalCase(field.type)}WithIncludes`);
+      }
+    }
+
+    return `import { ${[...imports].join(", ")} } from './_shared';`;
+  }
+
+  async transform() {
+    // Generate shared types file
+    await writeFileSafely(
+      `${this._outputPath}/_shared.ts`,
+      this.generateSharedFile(),
+    );
+    console.log(`[Frourio Framework]Model Generated: _shared.ts`);
+
+    const modelNames: string[] = [];
+
+    for (const model of this._models) {
+      modelNames.push(model.name);
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
       const profiles = parseModelDtoProfiles({ model });
 
@@ -780,23 +882,16 @@ export default class Transformer {
         )
         .join("\n\n              ");
 
+      const hasRelations = camelCasedModel.fields.some((f) => f.relationName);
+
       writeFileSafely(
         `${this._outputPath}/${model.name}.model.ts`,
         `
           ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
+          ${hasRelations ? this.generateSharedImports({ model: camelCasedModel }) : ""}
           ${this.generateNestedModelImports({ model: camelCasedModel })}
-
-          type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
-          type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-          ${this.generateWithAndWithoutIncludePrismaType({
-            model: camelCasedModel,
-            pascalCasedModel: {
-              name: model.name,
-            },
-          })}
 
           ${this.generateModelDtoType({ model: camelCasedModel })}
 
@@ -834,6 +929,17 @@ export default class Transformer {
           console.error(e);
         });
     }
+
+    // Generate barrel index.ts
+    const barrelExports = modelNames
+      .map((name) => `export * from './${name}.model';`)
+      .join("\n");
+
+    await writeFileSafely(
+      `${this._outputPath}/index.ts`,
+      `${barrelExports}\nexport * from './_shared';\n`,
+    );
+    console.log(`[Frourio Framework]Model Generated: index.ts`);
   }
 
   private mapPrismaValueType(args: { field: PrismaDMMF.Field }) {
