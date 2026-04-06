@@ -410,8 +410,10 @@ export default class Transformer {
     for (const field of args.model.fields) {
       if (field.relationName) {
         field.relationFromFields?.forEach((relationField) => {
+          const camelField = changeCase.camelCase(relationField);
+          const pattern = new RegExp(`\\b${camelField}\\b`);
           mutatingList = mutatingList.filter((keyValue) => {
-            return !keyValue.includes(changeCase.camelCase(relationField));
+            return !pattern.test(keyValue);
           });
         });
       }
