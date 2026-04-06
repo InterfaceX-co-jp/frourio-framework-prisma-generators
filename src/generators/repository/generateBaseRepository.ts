@@ -24,6 +24,7 @@ export async function generateBaseRepository(outputPath: string) {
       deleteMany(args?: any): Promise<{ count: number }>;
       upsert(args: any): Promise<any>;
       count(args?: any): Promise<number>;
+      aggregate(args: any): Promise<any>;
     }
 
     /** Options for findBy methods (include/select). */
@@ -40,8 +41,22 @@ export async function generateBaseRepository(outputPath: string) {
       totalPages: number;
     };
 
+    export type CursorPaginateResult<TModel> = {
+      data: TModel[];
+      nextCursor: string | number | null;
+      hasMore: boolean;
+    };
+
     export type BatchResult = {
       count: number;
+    };
+
+    export type AggregateResult = {
+      _count: number | null;
+      _sum: Record<string, number | null> | null;
+      _avg: Record<string, number | null> | null;
+      _min: Record<string, any> | null;
+      _max: Record<string, any> | null;
     };
 
     export abstract class BaseRepository<TModel> {
@@ -157,11 +172,29 @@ export async function generateBaseRepository(outputPath: string) {
       }
 
       // =========================================
+      // Aggregate
+      // =========================================
+
+      /**
+       * Perform aggregate operations (count, sum, avg, min, max).
+       */
+      async aggregate(args: {
+        where?: Record<string, any>;
+        _count?: boolean | Record<string, boolean>;
+        _sum?: Record<string, boolean>;
+        _avg?: Record<string, boolean>;
+        _min?: Record<string, boolean>;
+        _max?: Record<string, boolean>;
+      }): Promise<AggregateResult> {
+        return this.delegate.aggregate(args);
+      }
+
+      // =========================================
       // Pagination
       // =========================================
 
       /**
-       * Paginate records with the given conditions.
+       * Offset-based pagination.
        */
       protected async paginate(args: {
         page: number;
@@ -191,6 +224,69 @@ export async function generateBaseRepository(outputPath: string) {
           perPage,
           totalPages: Math.ceil(total / perPage),
         };
+      }
+
+      /**
+       * Cursor-based pagination.
+       * More efficient than offset pagination for large datasets.
+       *
+       * @param args.cursor - The cursor value (id of the last item from previous page)
+       * @param args.take - Number of items to fetch
+       * @param args.cursorField - The field to use as cursor (defaults to 'id')
+       */
+      protected async cursorPaginate(args: {
+        cursor?: string | number;
+        take: number;
+        cursorField?: string;
+        where?: Record<string, any>;
+        orderBy?: Record<string, any>;
+        include?: Record<string, any>;
+      }): Promise<CursorPaginateResult<TModel>> {
+        const { cursor, take, where, orderBy, include } = args;
+        const cursorField = args.cursorField ?? 'id';
+
+        const findArgs: any = {
+          where,
+          orderBy: orderBy ?? { [cursorField]: 'asc' },
+          include,
+          take: take + 1, // Fetch one extra to check hasMore
+        };
+
+        if (cursor !== undefined) {
+          findArgs.cursor = { [cursorField]: cursor };
+          findArgs.skip = 1; // Skip the cursor itself
+        }
+
+        const records = await this.delegate.findMany(findArgs);
+        const hasMore = records.length > take;
+        const data = hasMore ? records.slice(0, take) : records;
+
+        const lastItem = data[data.length - 1];
+        const nextCursor = hasMore && lastItem ? lastItem[cursorField] : null;
+
+        return {
+          data: data.map((record: any) => this.toModel(record)),
+          nextCursor,
+          hasMore,
+        };
+      }
+
+      // =========================================
+      // Transaction support
+      // =========================================
+
+      /**
+       * Create a new repository instance that uses a transaction client.
+       * Usage:
+       *   await prisma.$transaction(async (tx) => {
+       *     const txRepo = repo.withTransaction(tx.user);
+       *     await txRepo.create({ data: { ... } });
+       *     await txRepo.update({ ... });
+       *   });
+       */
+      withTransaction(txDelegate: PrismaDelegate): this {
+        const TransactionRepo = this.constructor as new (delegate: PrismaDelegate) => this;
+        return new TransactionRepo(txDelegate);
       }
     }
   `;

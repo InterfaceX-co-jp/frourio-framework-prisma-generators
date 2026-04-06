@@ -295,25 +295,56 @@ ${relationSetters.join("\n")}
   }
 
   // =========================================
+  // Relation filter generation
+  // =========================================
+
+  private generateRelationFilterFields(
+    model: ReadonlyDeep<PrismaDMMF.Model>,
+  ): string {
+    const relationFields = this.getRelationFields(model);
+    if (relationFields.length === 0) return "";
+
+    return relationFields
+      .map((f) => {
+        const camelName = changeCase.camelCase(f.name);
+        if (f.isList) {
+          // List relation: some, every, none
+          return `${camelName}?: { some?: Record<string, any>; every?: Record<string, any>; none?: Record<string, any> }`;
+        }
+        // Single relation: is, isNot
+        return `${camelName}?: { is?: Record<string, any>; isNot?: Record<string, any> } | null`;
+      })
+      .join(";\n      ");
+  }
+
+  // =========================================
   // Paginate generation
   // =========================================
 
   private generatePaginateMethod(
     model: ReadonlyDeep<PrismaDMMF.Model>,
-  ): { typeDefinition: string; method: string } {
+  ): { typeDefinition: string; method: string; cursorMethod: string } {
     const scalarFields = this.getScalarFieldsExcludingFk(model);
 
     const filterFields = scalarFields
       .map((f) => this.generateWhereFilterField(f))
       .join(";\n      ");
 
+    const relationFilterFields = this.generateRelationFilterFields(model);
+
     const sortableFields = scalarFields
       .map((f) => `'${changeCase.camelCase(f.name)}'`)
       .join(" | ");
 
+    // Get the cursor field type (default: id)
+    const idFields = this.getIdFields(model);
+    const cursorField = idFields.length > 0 ? idFields[0] : null;
+    const cursorType = cursorField ? this.mapPrismaTypeToTs(cursorField) : "string | number";
+    const cursorFieldName = cursorField ? changeCase.camelCase(cursorField.name) : "id";
+
     const typeDefinition = `
     export type ${model.name}WhereFilter = {
-      ${filterFields};
+      ${filterFields};${relationFilterFields ? `\n      ${relationFilterFields};` : ""}
     };
 
     export type ${model.name}OrderBy = {
@@ -326,6 +357,14 @@ ${relationSetters.join("\n")}
       perPage?: number;
       where?: ${model.name}WhereFilter;
       orderBy?: ${model.name}OrderBy | ${model.name}OrderBy[];
+      include?: Record<string, any>;
+    };
+
+    export type ${model.name}CursorPaginateArgs = {
+      cursor?: ${cursorType};
+      take?: number;
+      where?: ${model.name}WhereFilter;
+      orderBy?: ${model.name}OrderBy;
       include?: Record<string, any>;
     };`;
 
@@ -349,7 +388,25 @@ ${relationSetters.join("\n")}
       });
     }`;
 
-    return { typeDefinition, method };
+    const cursorMethod = `
+    async cursorPaginate(args?: ${model.name}CursorPaginateArgs): Promise<CursorPaginateResult<${model.name}Model>> {
+      const take = args?.take ?? 20;
+
+      const orderBy = args?.orderBy
+        ? { [args.orderBy.field]: args.orderBy.direction }
+        : undefined;
+
+      return super.cursorPaginate({
+        cursor: args?.cursor,
+        take,
+        cursorField: '${cursorFieldName}',
+        where: args?.where as Record<string, any>,
+        orderBy: orderBy as Record<string, any>,
+        include: args?.include,
+      });
+    }`;
+
+    return { typeDefinition, method, cursorMethod };
   }
 
   // =========================================
@@ -379,8 +436,8 @@ ${relationSetters.join("\n")}
       this.generateFindByCompositeMethod(model, c),
     );
 
-    // Generate paginate
-    const { typeDefinition: paginateTypes, method: paginateMethod } =
+    // Generate paginate + cursor paginate
+    const { typeDefinition: paginateTypes, method: paginateMethod, cursorMethod } =
       this.generatePaginateMethod(model);
 
     // Generate toModel with relation support
@@ -391,6 +448,7 @@ ${relationSetters.join("\n")}
       ...findByUniqueMethods,
       ...findByCompositeMethods,
       paginateMethod,
+      cursorMethod,
     ].join("\n");
 
     // Build import for enums from @prisma/client
@@ -400,7 +458,7 @@ ${relationSetters.join("\n")}
 
     return `
       import { ${model.name}Model } from '${this._modelImportPath}/${model.name}.model';
-      import { BaseRepository, PaginateResult, FindOptions } from './BaseRepository';
+      import { BaseRepository, PaginateResult, CursorPaginateResult, FindOptions } from './BaseRepository';
       ${enumImportLine}
 
       ${paginateTypes}
