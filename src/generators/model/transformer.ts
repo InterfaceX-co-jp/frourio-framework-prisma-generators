@@ -195,12 +195,14 @@ export default class Transformer {
       });
     }
 
+    const dtoSerializedTypes = ["DateTime", "BigInt", "Bytes"];
+    const overrideValue = dtoSerializedTypes.includes(args.field.type)
+      ? `string${args.field.isList ? "[]" : ""}`
+      : undefined;
+
     return this.renderKeyValueFieldStringFromDMMFField({
       field: args.field,
-      overrideValue:
-        args.field.type === "DateTime"
-          ? `string${args.field.isList ? "[]" : ""}`
-          : undefined,
+      overrideValue,
     });
   }
 
@@ -230,6 +232,23 @@ export default class Transformer {
         return `${args.field.name}: ${this.wrapNullable({ field: args.field, accessor, conversion: ".map((el) => el.toISOString())" })}`;
       }
       return `${args.field.name}: ${this.wrapNullable({ field: args.field, accessor, conversion: ".toISOString()" })}`;
+    }
+
+    if (args.field.type === "BigInt") {
+      if (args.field.isList) {
+        return `${args.field.name}: ${this.wrapNullable({ field: args.field, accessor, conversion: ".map((el) => el.toString())" })}`;
+      }
+      return `${args.field.name}: ${this.wrapNullable({ field: args.field, accessor, conversion: ".toString()" })}`;
+    }
+
+    if (args.field.type === "Bytes") {
+      if (args.field.isList) {
+        return `${args.field.name}: ${this.wrapNullable({ field: args.field, accessor, conversion: ".map((el) => Buffer.from(el).toString('base64'))" })}`;
+      }
+      if (args.field.isRequired) {
+        return `${args.field.name}: Buffer.from(${accessor}).toString('base64')`;
+      }
+      return `${args.field.name}: ${accessor} ? Buffer.from(${accessor}).toString('base64') : null`;
     }
 
     return `${args.field.name}: ${accessor}`;
@@ -514,11 +533,21 @@ export default class Transformer {
         }`;
   }
 
+  private resolveFieldType(args: { field: PrismaDMMF.Field }): string {
+    if (args.field.type === "Json" && args.field.documentation) {
+      const parsed = parseFieldDocumentation({ field: args.field });
+      if (parsed?.type?.jsonType) {
+        return args.field.isList ? `${parsed.type.jsonType}[]` : parsed.type.jsonType;
+      }
+    }
+    return this.mapPrismaValueType({ field: args.field });
+  }
+
   private generateBuilderScalarSetters(args: { model: PrismaDMMF.Model }) {
     const setters = args.model.fields
       .filter((field) => !field.relationName)
       .map((field) => {
-        const tsType = this.mapPrismaValueType({ field });
+        const tsType = this.resolveFieldType({ field });
         const paramType = field.isRequired ? tsType : `${tsType} | null`;
 
         return `${field.name}(value: ${paramType}): this {
