@@ -411,7 +411,7 @@ export default class Transformer {
       if (field.relationName) {
         field.relationFromFields?.forEach((relationField) => {
           const camelField = changeCase.camelCase(relationField);
-          const pattern = new RegExp(`\\b${camelField}\\b`);
+          const pattern = new RegExp(`(?<![a-zA-Z0-9])${camelField}(?![a-zA-Z0-9])`);
           mutatingList = mutatingList.filter((keyValue) => {
             return !pattern.test(keyValue);
           });
