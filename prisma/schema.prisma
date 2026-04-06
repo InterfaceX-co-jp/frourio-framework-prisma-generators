@@ -12,10 +12,13 @@ generator model {
   additionalTypePath = "./@additionalType/index"
 }
 
+/// @dto.profile(name: Public, pick: [id, email, name])
+/// @dto.profile(name: Admin, omit: [password])
 model User {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String?
+  id       Int     @id @default(autoincrement())
+  email    String  @unique
+  name     String?
+  password String  /// @dto(hidden: true)
 
   posts Post[]
   books Book[]
