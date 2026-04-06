@@ -2,9 +2,9 @@
 
 ## Critical（機能が壊れている / 期待と違う動作）
 
-- [ ] **BigInt / Bytes が DTO で JSON シリアライズ不可** — `PostModelDto` で `likes: bigint`, `bytes: ArrayBuffer` がそのまま返される。`JSON.stringify()` で BigInt は例外、ArrayBuffer は `{}` になる。`toDto()` で `Number(bigint)` or `bigint.toString()` / `Buffer.from(bytes).toString('base64')` に変換すべき
-- [ ] **Builder の JSON カスタム型セッターが `Prisma.JsonValue` を受ける** — `JsonFieldModelBuilder.jsonObject(value: Prisma.JsonValue)` だが、constructor は `JsonObject` を期待する。`generateBuilderScalarSetters` が `@json` アノテーションを考慮していない
-- [ ] **`removeRelationFromFieldsId` が部分一致で誤除外する可能性** — `keyValue.includes(camelCase(relationField))` は文字列部分一致。`userId` を除外するつもりが `userIdHistory` 等も巻き込む可能性がある。正規表現 or トークン境界チェックが必要
+- [x] **BigInt / Bytes が DTO で JSON シリアライズ不可** — `toDto()` で BigInt→`.toString()`, Bytes→`Buffer.from().toString('base64')` に変換
+- [x] **Builder の JSON カスタム型セッターが `Prisma.JsonValue` を受ける** — `resolveFieldType()` で `@json` アノテーションを考慮
+- [x] **`removeRelationFromFieldsId` が部分一致で誤除外する可能性** — lookbehind/lookahead 正規表現に置換
 
 ## Medium（実用上よく必要になる機能の欠如）
 

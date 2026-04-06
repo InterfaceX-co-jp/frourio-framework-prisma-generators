@@ -92,9 +92,12 @@ export default class Transformer {
   private renderKeyValueFieldStringFromDMMFField(args: {
     field: PrismaDMMF.Field;
     overrideValue?: string;
+    forceOptional?: boolean;
   }) {
-    const requiredOrNullKey = args.field.isRequired ? "" : "?";
-    const requiredOrNullValue = args.field.isRequired ? "" : "| null";
+    const isNullable = !args.field.isRequired;
+    const isOptionalKey = isNullable || args.forceOptional;
+    const requiredOrNullKey = isOptionalKey ? "?" : "";
+    const requiredOrNullValue = isNullable ? "| null" : "";
 
     const renderKey = `${args.field.name}${requiredOrNullKey}`;
 
@@ -291,7 +294,10 @@ export default class Transformer {
 
   private generateModelFields(args: { model: PrismaDMMF.Model }) {
     let keyValueList = args.model.fields.map((field) => {
-      return `private readonly _${this.renderKeyValueFieldStringFromDMMFField({ field })};`;
+      return `private readonly _${this.renderKeyValueFieldStringFromDMMFField({
+        field,
+        forceOptional: this.hasDefaultOrUpdatedAt(field),
+      })};`;
     });
 
     const fields = this.removeRelationFromFieldsId({
@@ -302,9 +308,16 @@ export default class Transformer {
     return fields.join("\n  ");
   }
 
+  private hasDefaultOrUpdatedAt(field: PrismaDMMF.Field): boolean {
+    return !!(field as any).hasDefaultValue || !!(field as any).isUpdatedAt;
+  }
+
   private generateModelConstructorType(args: { model: PrismaDMMF.Model }) {
     let keyValueList = args.model.fields.map((field) => {
-      return this.renderKeyValueFieldStringFromDMMFField({ field });
+      return this.renderKeyValueFieldStringFromDMMFField({
+        field,
+        forceOptional: this.hasDefaultOrUpdatedAt(field),
+      });
     });
 
     const fields = this.removeRelationFromFieldsId({
@@ -614,11 +627,15 @@ export default class Transformer {
       }
 
       // Scalar fields
-      if (field.isRequired) {
+      const hasDefault = (field as any).hasDefaultValue || (field as any).isUpdatedAt;
+      if (field.isRequired && !hasDefault) {
         return {
           validation: `if (this._args.${field.name} === undefined) throw new Error('${args.model.name}ModelBuilder: "${field.name}" is required');`,
           assignment: `${field.name}: this._args.${field.name}`,
         };
+      } else if (field.isRequired && hasDefault) {
+        // Required but has @default or @updatedAt — skip validation, pass as-is (may be undefined)
+        return { assignment: `${field.name}: this._args.${field.name}` };
       } else {
         return { assignment: `${field.name}: this._args.${field.name} ?? null` };
       }
