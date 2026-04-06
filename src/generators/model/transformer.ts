@@ -277,9 +277,28 @@ export default class Transformer {
     `;
   }
 
+  private resolveGetterReturnType(field: PrismaDMMF.Field): string {
+    const baseType = (() => {
+      if (field.relationName) {
+        const typeName = `${changeCase.pascalCase(field.type)}WithIncludes`;
+        return field.isList ? `${typeName}[]` : typeName;
+      }
+      return this.resolveFieldType({ field });
+    })();
+
+    const isNullable = !field.isRequired;
+    const isOptional = isNullable || this.hasDefaultOrUpdatedAt(field);
+
+    if (isNullable && isOptional) return `${baseType} | null | undefined`;
+    if (isOptional) return `${baseType} | undefined`;
+    if (isNullable) return `${baseType} | null`;
+    return baseType;
+  }
+
   private generateModelGetterFields(args: { model: PrismaDMMF.Model }) {
     let keyValueList = args.model.fields.map((field) => {
-      return `get ${field.name}() {
+      const returnType = this.resolveGetterReturnType(field);
+      return `get ${field.name}(): ${returnType} {
             return this._${field.name};
         }`;
     });
@@ -706,6 +725,10 @@ export default class Transformer {
 
         ${this.generateBuilderRelationSetters({ model: args.model })}
 
+        ${this.generateBuilderMergeMethod({ model: args.model })}
+
+        ${this.generateBuilderFromPartialMethod({ model: args.model })}
+
         ${this.generateBuilderBuildArgsMethod({ model: args.model })}
 
         build(): ${args.model.name}Model {
@@ -717,6 +740,59 @@ export default class Transformer {
   private generateStaticBuilderFactory(args: { model: PrismaDMMF.Model }) {
     return `static builder(): ${args.model.name}ModelBuilder {
             return new ${args.model.name}ModelBuilder();
+        }`;
+  }
+
+  private generateEqualsMethod(args: { model: PrismaDMMF.Model }) {
+    const fields = this.removeRelationFromFieldsId({
+      model: args.model,
+      mutatingList: args.model.fields.map((f) => f.name),
+    });
+
+    const comparisons = fields.map((name) => `this._${name} === other._${name}`);
+
+    return `equals(other: ${args.model.name}Model): boolean {
+            return ${comparisons.join(" && ")};
+        }`;
+  }
+
+  private generateCloneMethod(args: { model: PrismaDMMF.Model }) {
+    let keyValueList = args.model.fields.map((field) => {
+      return `${field.name}: this._${field.name}`;
+    });
+
+    const fields = this.removeRelationFromFieldsId({
+      model: args.model,
+      mutatingList: keyValueList,
+    });
+
+    return `clone(): ${args.model.name}Model {
+            return new ${args.model.name}Model({
+                ${fields.join(",\n                ")}
+            });
+        }`;
+  }
+
+  private generateBuilderMergeMethod(args: { model: PrismaDMMF.Model }) {
+    let keyValueList = args.model.fields.map((field) => {
+      return `this._args.${field.name} = model.${field.name};`;
+    });
+
+    const fields = this.removeRelationFromFieldsId({
+      model: args.model,
+      mutatingList: keyValueList,
+    });
+
+    return `merge(model: ${args.model.name}Model): this {
+            ${fields.join("\n            ")}
+            return this;
+        }`;
+  }
+
+  private generateBuilderFromPartialMethod(args: { model: PrismaDMMF.Model }) {
+    return `fromPartial(args: Partial<${args.model.name}ModelConstructorArgs>): this {
+            Object.assign(this._args, args);
+            return this;
         }`;
   }
 
@@ -915,6 +991,10 @@ export default class Transformer {
               ${profileToDtoMethods}
 
               ${this.generateModelGetterFields({ model: camelCasedModel })}
+
+              ${this.generateEqualsMethod({ model: camelCasedModel })}
+
+              ${this.generateCloneMethod({ model: camelCasedModel })}
           }
 
           ${this.generateBuilderClass({ model: camelCasedModel, originalModelName: model.name })}

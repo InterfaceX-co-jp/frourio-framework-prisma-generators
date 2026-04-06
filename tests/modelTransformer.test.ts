@@ -564,4 +564,183 @@ describe("Model Transformer", () => {
       expect(content).toContain('"name" is required');
     });
   });
+
+  describe("transform — getter return types", () => {
+    it("generates explicit return type annotations on getters", async () => {
+      const model = makeModel("Typed", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+        makeField({ name: "bio", type: "String", isRequired: false }),
+        makeField({ name: "createdAt", type: "DateTime", hasDefaultValue: true }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Typed.model.ts");
+      // Required field should have explicit return type
+      expect(content).toMatch(/get id\(\):\s*number/);
+      expect(content).toMatch(/get name\(\):\s*string/);
+      // Nullable field should include null | undefined
+      expect(content).toMatch(/get bio\(\):\s*string \| null \| undefined/);
+      // Field with default should include undefined
+      expect(content).toMatch(/get createdAt\(\):\s*Date \| undefined/);
+    });
+
+    it("generates return types for relation getters", async () => {
+      const model = makeModel("Post", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({
+          name: "author",
+          type: "User",
+          kind: "object",
+          isRequired: false,
+          relationName: "PostToUser",
+          relationFromFields: ["authorId"],
+          relationToFields: ["id"],
+        } as any),
+        makeField({ name: "authorId", type: "Int" }),
+        makeField({
+          name: "tags",
+          type: "Tag",
+          kind: "object",
+          isList: true,
+          relationName: "PostToTag",
+        } as any),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Post.model.ts");
+      // Optional relation should have null | undefined
+      expect(content).toMatch(/get author\(\):\s*UserWithIncludes \| null \| undefined/);
+      // List relation should have array type
+      expect(content).toMatch(/get tags\(\):\s*TagWithIncludes\[\]/);
+    });
+  });
+
+  describe("transform — equals method", () => {
+    it("generates equals method that compares all fields", async () => {
+      const model = makeModel("Item", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Item.model.ts");
+      expect(content).toContain("equals(other: ItemModel): boolean");
+      expect(content).toContain("this._id === other._id");
+      expect(content).toContain("this._name === other._name");
+    });
+
+    it("excludes FK fields from equals comparison", async () => {
+      const model = makeModel("Post", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "title", type: "String" }),
+        makeField({ name: "authorId", type: "Int" }),
+        makeField({
+          name: "author",
+          type: "User",
+          kind: "object",
+          isRequired: false,
+          relationName: "PostToUser",
+          relationFromFields: ["authorId"],
+          relationToFields: ["id"],
+        } as any),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Post.model.ts");
+      expect(content).toContain("equals(other: PostModel): boolean");
+      expect(content).not.toContain("this._authorId === other._authorId");
+    });
+  });
+
+  describe("transform — clone method", () => {
+    it("generates clone method that creates a new model instance", async () => {
+      const model = makeModel("Item", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Item.model.ts");
+      expect(content).toContain("clone(): ItemModel");
+      expect(content).toContain("new ItemModel(");
+      expect(content).toContain("id: this._id");
+      expect(content).toContain("name: this._name");
+    });
+  });
+
+  describe("transform — builder merge method", () => {
+    it("generates merge method that copies from an existing model", async () => {
+      const model = makeModel("Item", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Item.model.ts");
+      expect(content).toContain("merge(model: ItemModel): this");
+      expect(content).toContain("this._args.id = model.id");
+      expect(content).toContain("this._args.name = model.name");
+    });
+
+    it("excludes FK fields from merge", async () => {
+      const model = makeModel("Post", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "title", type: "String" }),
+        makeField({ name: "authorId", type: "Int" }),
+        makeField({
+          name: "author",
+          type: "User",
+          kind: "object",
+          isRequired: false,
+          relationName: "PostToUser",
+          relationFromFields: ["authorId"],
+          relationToFields: ["id"],
+        } as any),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Post.model.ts");
+      expect(content).toContain("merge(model: PostModel): this");
+      expect(content).not.toMatch(/this\._args\.authorId\s*=\s*model\.authorId/);
+    });
+  });
+
+  describe("transform — builder fromPartial method", () => {
+    it("generates fromPartial method", async () => {
+      const model = makeModel("Item", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Item.model.ts");
+      expect(content).toContain("fromPartial(args: Partial<ItemModelConstructorArgs>): this");
+      expect(content).toContain("Object.assign(this._args, args)");
+    });
+  });
 });
