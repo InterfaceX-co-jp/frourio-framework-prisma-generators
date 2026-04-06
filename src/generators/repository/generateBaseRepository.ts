@@ -17,8 +17,12 @@ export async function generateBaseRepository(outputPath: string) {
       findFirst(args?: any): Promise<any>;
       findMany(args?: any): Promise<any[]>;
       create(args: any): Promise<any>;
+      createMany(args: any): Promise<{ count: number }>;
       update(args: any): Promise<any>;
+      updateMany(args: any): Promise<{ count: number }>;
       delete(args: any): Promise<any>;
+      deleteMany(args?: any): Promise<{ count: number }>;
+      upsert(args: any): Promise<any>;
       count(args?: any): Promise<number>;
     }
 
@@ -36,6 +40,10 @@ export async function generateBaseRepository(outputPath: string) {
       totalPages: number;
     };
 
+    export type BatchResult = {
+      count: number;
+    };
+
     export abstract class BaseRepository<TModel> {
       constructor(protected readonly delegate: PrismaDelegate) {}
 
@@ -44,6 +52,10 @@ export async function generateBaseRepository(outputPath: string) {
        * Subclasses MUST implement this method.
        */
       protected abstract toModel(record: any): TModel;
+
+      // =========================================
+      // Read
+      // =========================================
 
       /**
        * Find all records matching the given conditions.
@@ -62,12 +74,43 @@ export async function generateBaseRepository(outputPath: string) {
       }
 
       /**
+       * Count records matching the given conditions.
+       */
+      async count(args?: Parameters<PrismaDelegate['count']>[0]): Promise<number> {
+        return this.delegate.count(args);
+      }
+
+      /**
+       * Check if a record matching the given conditions exists.
+       */
+      async exists(where: Record<string, any>): Promise<boolean> {
+        const count = await this.delegate.count({ where });
+        return count > 0;
+      }
+
+      // =========================================
+      // Create
+      // =========================================
+
+      /**
        * Create a new record and return the domain model.
        */
       async create(args: Parameters<PrismaDelegate['create']>[0]): Promise<TModel> {
         const record = await this.delegate.create(args);
         return this.toModel(record);
       }
+
+      /**
+       * Create multiple records at once.
+       * Returns the count of created records.
+       */
+      async createMany(args: Parameters<PrismaDelegate['createMany']>[0]): Promise<BatchResult> {
+        return this.delegate.createMany(args);
+      }
+
+      // =========================================
+      // Update
+      // =========================================
 
       /**
        * Update an existing record and return the domain model.
@@ -78,6 +121,26 @@ export async function generateBaseRepository(outputPath: string) {
       }
 
       /**
+       * Update multiple records matching the given conditions.
+       * Returns the count of updated records.
+       */
+      async updateMany(args: Parameters<PrismaDelegate['updateMany']>[0]): Promise<BatchResult> {
+        return this.delegate.updateMany(args);
+      }
+
+      /**
+       * Create or update a record.
+       */
+      async upsert(args: Parameters<PrismaDelegate['upsert']>[0]): Promise<TModel> {
+        const record = await this.delegate.upsert(args);
+        return this.toModel(record);
+      }
+
+      // =========================================
+      // Delete
+      // =========================================
+
+      /**
        * Delete a record and return the domain model of the deleted row.
        */
       async delete(args: Parameters<PrismaDelegate['delete']>[0]): Promise<TModel> {
@@ -86,11 +149,16 @@ export async function generateBaseRepository(outputPath: string) {
       }
 
       /**
-       * Count records matching the given conditions.
+       * Delete multiple records matching the given conditions.
+       * Returns the count of deleted records.
        */
-      async count(args?: Parameters<PrismaDelegate['count']>[0]): Promise<number> {
-        return this.delegate.count(args);
+      async deleteMany(args?: Parameters<PrismaDelegate['deleteMany']>[0]): Promise<BatchResult> {
+        return this.delegate.deleteMany(args);
       }
+
+      // =========================================
+      // Pagination
+      // =========================================
 
       /**
        * Paginate records with the given conditions.
