@@ -22,6 +22,12 @@ export async function generateBaseRepository(outputPath: string) {
       count(args?: any): Promise<number>;
     }
 
+    /** Options for findBy methods (include/select). */
+    export type FindOptions = {
+      include?: Record<string, any>;
+      select?: Record<string, any>;
+    };
+
     export type PaginateResult<TModel> = {
       data: TModel[];
       total: number;
@@ -94,14 +100,16 @@ export async function generateBaseRepository(outputPath: string) {
         perPage: number;
         where?: Record<string, any>;
         orderBy?: Record<string, any>;
+        include?: Record<string, any>;
       }): Promise<PaginateResult<TModel>> {
-        const { page, perPage, where, orderBy } = args;
+        const { page, perPage, where, orderBy, include } = args;
         const skip = (page - 1) * perPage;
 
         const [records, total] = await Promise.all([
           this.delegate.findMany({
             where,
             orderBy,
+            include,
             skip,
             take: perPage,
           }),

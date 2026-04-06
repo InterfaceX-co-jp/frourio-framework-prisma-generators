@@ -23,6 +23,10 @@ export class RepositoryTransformer {
     this._modelImportPath = args.modelImportPath;
   }
 
+  // =========================================
+  // Type mapping
+  // =========================================
+
   private mapPrismaTypeToTs(field: ReadonlyDeep<PrismaDMMF.Field>): string {
     switch (field.type) {
       case "String":
@@ -42,10 +46,21 @@ export class RepositoryTransformer {
       case "Json":
         return "any";
       default:
-        // Enum or other
+        // Enum or other — return the Prisma enum type name
+        if (field.kind === "enum") {
+          return `Prisma${field.type}`;
+        }
         return "string";
     }
   }
+
+  private isEnumField(field: ReadonlyDeep<PrismaDMMF.Field>): boolean {
+    return field.kind === "enum";
+  }
+
+  // =========================================
+  // Field categorization
+  // =========================================
 
   /**
    * Get fields marked with @id (single-field PKs).
@@ -61,12 +76,13 @@ export class RepositoryTransformer {
         .filter((f): f is ReadonlyDeep<PrismaDMMF.Field> => f !== undefined);
     }
 
-    // Single @id fields
+    // Single @id fields only (not @unique)
     return model.fields.filter((f) => f.isId);
   }
 
   /**
-   * Get fields marked with @unique (single-field uniques).
+   * Get fields marked with @unique (single-field uniques),
+   * excluding @id fields.
    */
   private getUniqueFields(
     model: ReadonlyDeep<PrismaDMMF.Model>,
@@ -91,7 +107,56 @@ export class RepositoryTransformer {
   }
 
   /**
+   * Get relation fields for the model.
+   */
+  private getRelationFields(
+    model: ReadonlyDeep<PrismaDMMF.Model>,
+  ): ReadonlyDeep<PrismaDMMF.Field>[] {
+    return model.fields.filter((f) => f.relationName);
+  }
+
+  /**
+   * Get scalar fields excluding FK fields that have a corresponding relation.
+   */
+  private getScalarFieldsExcludingFk(
+    model: ReadonlyDeep<PrismaDMMF.Model>,
+  ): ReadonlyDeep<PrismaDMMF.Field>[] {
+    const fkFieldNames = new Set<string>();
+    for (const field of model.fields) {
+      if (field.relationName && field.relationFromFields) {
+        for (const fk of field.relationFromFields) {
+          fkFieldNames.add(fk);
+        }
+      }
+    }
+
+    return model.fields.filter(
+      (f) => !f.relationName && f.kind !== "unsupported" && !fkFieldNames.has(f.name),
+    );
+  }
+
+  /**
+   * Collect all enum types used by a model's fields.
+   */
+  private getEnumImports(
+    model: ReadonlyDeep<PrismaDMMF.Model>,
+  ): string[] {
+    const enums = new Set<string>();
+    for (const field of model.fields) {
+      if (field.kind === "enum") {
+        enums.add(field.type);
+      }
+    }
+    return [...enums];
+  }
+
+  // =========================================
+  // findBy method generation
+  // =========================================
+
+  /**
    * Generate findByXXXX method for a single @id or @unique field.
+   * Includes optional `options` parameter for include/select.
    */
   private generateFindByFieldMethod(
     model: ReadonlyDeep<PrismaDMMF.Model>,
@@ -102,8 +167,11 @@ export class RepositoryTransformer {
     const tsType = this.mapPrismaTypeToTs(field);
 
     return `
-    async ${methodName}(${fieldName}: ${tsType}): Promise<${model.name}Model | null> {
-      const record = await this.delegate.findUnique({ where: { ${fieldName} } });
+    async ${methodName}(${fieldName}: ${tsType}, options?: FindOptions): Promise<${model.name}Model | null> {
+      const record = await this.delegate.findUnique({
+        where: { ${fieldName} },
+        ...options,
+      });
       return record ? this.toModel(record) : null;
     }`;
   }
@@ -137,52 +205,106 @@ export class RepositoryTransformer {
     const compositeKeyName = composite.fields.join("_");
 
     return `
-    async ${methodName}(${params}): Promise<${model.name}Model | null> {
+    async ${methodName}(${params}, options?: FindOptions): Promise<${model.name}Model | null> {
       const record = await this.delegate.findUnique({
         where: { ${compositeKeyName}: { ${whereFields} } },
+        ...options,
       });
       return record ? this.toModel(record) : null;
     }`;
   }
 
+  // =========================================
+  // toModel generation with relation support
+  // =========================================
+
   /**
-   * Generate the paginate method with typed where filter.
+   * Generate toModel that sets relation fields from the record if present.
    */
+  private generateToModel(
+    model: ReadonlyDeep<PrismaDMMF.Model>,
+  ): string {
+    const relationFields = this.getRelationFields(model);
+
+    if (relationFields.length === 0) {
+      return `
+    protected toModel(record: any): ${model.name}Model {
+      return ${model.name}Model.builder().fromPrisma(record).build();
+    }`;
+    }
+
+    const relationSetters = relationFields.map((f) => {
+      const camelName = changeCase.camelCase(f.name);
+      return `    if (record.${camelName} !== undefined) builder.${camelName}(record.${camelName});`;
+    });
+
+    return `
+    protected toModel(record: any): ${model.name}Model {
+      const builder = ${model.name}Model.builder().fromPrisma(record);
+${relationSetters.join("\n")}
+      return builder.build();
+    }`;
+  }
+
+  // =========================================
+  // WhereFilter generation
+  // =========================================
+
+  private generateWhereFilterField(field: ReadonlyDeep<PrismaDMMF.Field>): string {
+    const fieldName = changeCase.camelCase(field.name);
+    const tsType = this.mapPrismaTypeToTs(field);
+    const nullSuffix = field.isRequired ? "" : " | null";
+
+    // Array fields — use Prisma array filter operators
+    if (field.isList) {
+      return `${fieldName}?: { has?: ${tsType}; hasEvery?: ${tsType}[]; hasSome?: ${tsType}[]; isEmpty?: boolean }`;
+    }
+
+    // String fields — exact match, contains, startsWith, endsWith
+    if (field.type === "String") {
+      return `${fieldName}?: ${tsType}${nullSuffix} | { contains?: string; startsWith?: string; endsWith?: string; mode?: 'insensitive' | 'default'; not?: ${tsType}${nullSuffix} }`;
+    }
+
+    // DateTime — exact, range, not
+    if (field.type === "DateTime") {
+      return `${fieldName}?: ${tsType}${nullSuffix} | { equals?: ${tsType}; gte?: ${tsType}; gt?: ${tsType}; lte?: ${tsType}; lt?: ${tsType}; not?: ${tsType}${nullSuffix} }`;
+    }
+
+    // Numeric types — exact, range, not
+    if (
+      field.type === "Int" ||
+      field.type === "Float" ||
+      field.type === "Decimal" ||
+      field.type === "BigInt"
+    ) {
+      return `${fieldName}?: ${tsType}${nullSuffix} | { equals?: ${tsType}; gte?: ${tsType}; gt?: ${tsType}; lte?: ${tsType}; lt?: ${tsType}; in?: ${tsType}[]; notIn?: ${tsType}[]; not?: ${tsType}${nullSuffix} }`;
+    }
+
+    // Boolean — exact, not
+    if (field.type === "Boolean") {
+      return `${fieldName}?: ${tsType}${nullSuffix} | { equals?: ${tsType}; not?: ${tsType}${nullSuffix} }`;
+    }
+
+    // Enum — exact, in, notIn, not
+    if (this.isEnumField(field)) {
+      return `${fieldName}?: ${tsType}${nullSuffix} | { equals?: ${tsType}; in?: ${tsType}[]; notIn?: ${tsType}[]; not?: ${tsType}${nullSuffix} }`;
+    }
+
+    // Json, Bytes, etc. — passthrough
+    return `${fieldName}?: ${tsType}${nullSuffix}`;
+  }
+
+  // =========================================
+  // Paginate generation
+  // =========================================
+
   private generatePaginateMethod(
     model: ReadonlyDeep<PrismaDMMF.Model>,
   ): { typeDefinition: string; method: string } {
-    const scalarFields = model.fields.filter(
-      (f) => !f.relationName && f.kind !== "unsupported",
-    );
+    const scalarFields = this.getScalarFieldsExcludingFk(model);
 
-    // Build filter type - each field can be filtered with its type or undefined
     const filterFields = scalarFields
-      .map((f) => {
-        const tsType = this.mapPrismaTypeToTs(f);
-        const fieldName = changeCase.camelCase(f.name);
-
-        // For string fields, allow contains-style filtering
-        if (f.type === "String") {
-          return `${fieldName}?: ${tsType} | { contains: string; mode?: 'insensitive' | 'default' }`;
-        }
-
-        // For DateTime, allow range filtering
-        if (f.type === "DateTime") {
-          return `${fieldName}?: ${tsType} | { gte?: ${tsType}; lte?: ${tsType} }`;
-        }
-
-        // For numeric types, allow range filtering
-        if (
-          f.type === "Int" ||
-          f.type === "Float" ||
-          f.type === "Decimal" ||
-          f.type === "BigInt"
-        ) {
-          return `${fieldName}?: ${tsType} | { gte?: ${tsType}; lte?: ${tsType} }`;
-        }
-
-        return `${fieldName}?: ${tsType}`;
-      })
+      .map((f) => this.generateWhereFilterField(f))
       .join(";\n      ");
 
     const sortableFields = scalarFields
@@ -204,6 +326,7 @@ export class RepositoryTransformer {
       perPage?: number;
       where?: ${model.name}WhereFilter;
       orderBy?: ${model.name}OrderBy | ${model.name}OrderBy[];
+      include?: Record<string, any>;
     };`;
 
     const method = `
@@ -222,21 +345,24 @@ export class RepositoryTransformer {
         perPage,
         where: args?.where as Record<string, any>,
         orderBy: orderBy as Record<string, any>,
+        include: args?.include,
       });
     }`;
 
     return { typeDefinition, method };
   }
 
-  /**
-   * Generate a full repository file for a model.
-   */
+  // =========================================
+  // Full repository file generation
+  // =========================================
+
   private generateRepositoryForModel(
     model: ReadonlyDeep<PrismaDMMF.Model>,
   ): string {
     const idFields = this.getIdFields(model);
     const uniqueFields = this.getUniqueFields(model);
     const compositeUniques = this.getCompositeUniques(model);
+    const enumImports = this.getEnumImports(model);
 
     // Generate findBy methods for @id fields
     const findByIdMethods = idFields.map((f) =>
@@ -257,6 +383,9 @@ export class RepositoryTransformer {
     const { typeDefinition: paginateTypes, method: paginateMethod } =
       this.generatePaginateMethod(model);
 
+    // Generate toModel with relation support
+    const toModelMethod = this.generateToModel(model);
+
     const allMethods = [
       ...findByIdMethods,
       ...findByUniqueMethods,
@@ -264,16 +393,20 @@ export class RepositoryTransformer {
       paginateMethod,
     ].join("\n");
 
+    // Build import for enums from @prisma/client
+    const enumImportLine = enumImports.length > 0
+      ? `import { ${enumImports.map((e) => `${e} as Prisma${e}`).join(", ")} } from '@prisma/client';`
+      : "";
+
     return `
       import { ${model.name}Model } from '${this._modelImportPath}/${model.name}.model';
-      import { BaseRepository, PaginateResult } from './BaseRepository';
+      import { BaseRepository, PaginateResult, FindOptions } from './BaseRepository';
+      ${enumImportLine}
 
       ${paginateTypes}
 
       export class ${model.name}Repository extends BaseRepository<${model.name}Model> {
-        protected toModel(record: any): ${model.name}Model {
-          return ${model.name}Model.builder().fromPrisma(record).build();
-        }
+        ${toModelMethod}
 
         ${allMethods}
       }
