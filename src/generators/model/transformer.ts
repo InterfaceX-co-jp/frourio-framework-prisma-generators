@@ -221,27 +221,43 @@ export default class Transformer {
             }`;
   }
 
+  /**
+   * Wraps an expression with optional chaining and null fallback when the field is nullable.
+   * - required:  `accessor.method()`
+   * - optional:  `accessor?.method() ?? null`
+   */
+  private wrapNullable(args: {
+    field: PrismaDMMF.Field;
+    accessor: string;
+    conversion: string;
+  }) {
+    if (args.field.isRequired) {
+      return `${args.accessor}${args.conversion}`;
+    }
+    return `${args.accessor}?${args.conversion} ?? null`;
+  }
+
   private generateStaticFromPrismaValue(args: { model: PrismaDMMF.Model }) {
     let keyValueList = args.model.fields.map((field) => {
+      const camelName = changeCase.camelCase(field.name);
+      const accessor = `args.self.${field.name}`;
+
       if (field.relationName) {
-        return `${changeCase.camelCase(field.name)}: args.${changeCase.camelCase(field.name)}`;
+        return `${camelName}: args.${camelName}`;
       }
 
       if (field.type === "Decimal") {
-        return `${changeCase.camelCase(field.name)}: args.self.${field.name}.toNumber()`;
+        return `${camelName}: ${this.wrapNullable({ field, accessor, conversion: ".toNumber()" })}`;
       }
 
       if (field.type === "Json" && field.documentation) {
-        const parsed = parseFieldDocumentation({
-          field,
-        });
-
+        const parsed = parseFieldDocumentation({ field });
         if (parsed) {
-          return `${changeCase.camelCase(field.name)}: args.self.${field.name} as unknown as ${parsed.type?.jsonType}`;
+          return `${camelName}: ${accessor} as unknown as ${parsed.type?.jsonType}`;
         }
       }
 
-      return `${changeCase.camelCase(field.name)}: args.self.${field.name}`;
+      return `${camelName}: ${accessor}`;
     });
 
     const fields = this.removeRelationFromFieldsId({
@@ -277,13 +293,16 @@ export default class Transformer {
 
   private generateToDtoMethod(args: { model: PrismaDMMF.Model }) {
     const keyValueList = args.model.fields.map((field) => {
+      const accessor = `this._${field.name}`;
+
       if (field.type === "DateTime") {
-        return field.isList
-          ? `${field.name}: this._${field.name}?.map((el) => el?.toISOString() ?? null) ?? null` // convert Date to string
-          : `${field.name}: this._${field.name}?.toISOString() ?? null`; // convert Date to string
+        if (field.isList) {
+          return `${field.name}: ${this.wrapNullable({ field, accessor, conversion: ".map((el) => el.toISOString())" })}`;
+        }
+        return `${field.name}: ${this.wrapNullable({ field, accessor, conversion: ".toISOString()" })}`;
       }
 
-      return `${field.name}: this._${field.name}`;
+      return `${field.name}: ${accessor}`;
     });
 
     const fields = this.removeRelationFromFieldsId({

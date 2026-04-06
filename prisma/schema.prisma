@@ -141,3 +141,9 @@ model OptionalDateTime {
 model SameFieldName {
   id Int @id @default(autoincrement())
 }
+
+model DecimalField {
+  id              Int      @id @default(autoincrement())
+  requiredDecimal Decimal  @db.Decimal(12, 0)
+  optionalDecimal Decimal? @db.Decimal(12, 0)
+}
