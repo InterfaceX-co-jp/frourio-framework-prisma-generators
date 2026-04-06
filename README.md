@@ -75,6 +75,7 @@ Working examples are available in the [`examples/`](examples/) directory:
 | [`basic/02-dto-hidden.ts`](examples/basic/02-dto-hidden.ts) | `@dto(hidden: true)` — hide sensitive fields like `password` |
 | [`basic/03-dto-profiles.ts`](examples/basic/03-dto-profiles.ts) | `@dto.profile` — purpose-specific DTOs with pick/omit |
 | [`basic/04-json-typed-fields.ts`](examples/basic/04-json-typed-fields.ts) | `@json` — custom TypeScript types for Json fields |
+| [`basic/05-dto-nested.ts`](examples/basic/05-dto-nested.ts) | `@dto(nested: true)` — auto-convert relations to nested DTOs |
 
 ### Builder Pattern
 
@@ -89,6 +90,7 @@ Working examples are available in the [`examples/`](examples/) directory:
 | File | Description |
 |------|-------------|
 | [`repository/UserRepository.ts`](examples/repository/UserRepository.ts) | Extending the generated repository with custom queries |
+| [`repository/JsonField.repository.ts`](examples/repository/JsonField.repository.ts) | Simple repository usage without the generator |
 
 > **Note:** Repository generation is a beta feature. Add a separate `repository` generator block to enable it.
 
@@ -118,10 +120,18 @@ For each model, the following methods are generated based on schema metadata:
 |--------|-------------|
 | `findMany(args?)` | Find all matching records |
 | `findFirst(args?)` | Find the first matching record |
-| `create(args)` | Create a record and return the model |
-| `update(args)` | Update a record and return the model |
-| `delete(args)` | Delete a record and return the model |
 | `count(args?)` | Count matching records |
+| `exists(where)` | Check if a matching record exists |
+| `create(args)` | Create a record and return the model |
+| `createMany(args)` | Batch create records (returns count) |
+| `update(args)` | Update a record and return the model |
+| `updateMany(args)` | Batch update records (returns count) |
+| `upsert(args)` | Create or update a record |
+| `delete(args)` | Delete a record and return the model |
+| `deleteMany(args?)` | Batch delete records (returns count) |
+| `aggregate(args)` | Aggregate operations (count, sum, avg, min, max) |
+| `cursorPaginate(args)` | Cursor-based pagination for large datasets |
+| `withTransaction(tx)` | Create a repository instance bound to a transaction |
 
 ### Usage — Direct
 
@@ -283,8 +293,8 @@ Conversion rules from Prisma types to TypeScript types:
 | `DateTime` | `Date` | `string` | `.toISOString()` |
 | `Json` | `Prisma.JsonValue` | `Prisma.JsonValue` | None (overridable via `@json`) |
 | `Decimal` | `number` | `number` | `.toNumber()` in `fromPrismaValue` |
-| `BigInt` | `bigint` | `bigint` | None |
-| `Bytes` | `ArrayBuffer` | `ArrayBuffer` | None |
+| `BigInt` | `bigint` | `string` | `.toString()` |
+| `Bytes` | `Buffer` | `string` | `Buffer.from().toString('base64')` |
 | Enum | `Prisma{EnumName}` | `Prisma{EnumName}` | None |
 | Relation | `{Type}WithIncludes` | `{Type}WithIncludes` | None |
 
@@ -418,6 +428,64 @@ export class UserModel {
 | `fromPrismaValue()` | **Not affected** (included) |
 | Private fields | **Not affected** (retained) |
 | Getters | **Not affected** (accessible) |
+
+---
+
+### `@dto(nested: true)` - Nested DTO Conversion
+
+Automatically convert relation fields into their model's DTO form in `toDto()` output. Without this annotation, relation fields are passed through as raw Prisma `WithIncludes` types.
+
+#### Syntax
+
+```prisma
+fieldName Model[] /// @dto(nested: true)
+```
+
+#### Example
+
+```prisma
+model User {
+  id    Int    @id @default(autoincrement())
+  email String
+  posts Post[] /// @dto(nested: true)
+  books Book[]
+}
+```
+
+#### Generated Output
+
+```ts
+// DTO type — posts uses PostModelDto instead of PostWithIncludes
+export type UserModelDto = {
+  id: number;
+  email: string;
+  posts: PostModelDto[];        // @dto(nested: true) → nested DTO
+  books: BookWithIncludes[];    // no annotation → raw Prisma type
+};
+
+export class UserModel {
+  toDto() {
+    return {
+      id: this._id,
+      email: this._email,
+      // posts are automatically converted via builder + toDto
+      posts: this._posts.map((el) =>
+        PostModel.builder().fromPrisma(el).build().toDto()
+      ),
+      books: this._books,
+    };
+  }
+}
+```
+
+#### Behavior
+
+| Target | Effect of `nested` |
+|--------|-------------------|
+| `{Model}ModelDto` type | Relation type becomes `{Related}ModelDto` |
+| `toDto()` method | Automatically converts via `builder().fromPrisma().build().toDto()` |
+| `{Model}ModelConstructorArgs` type | **Not affected** (uses `WithIncludes`) |
+| `fromPrismaValue()` | **Not affected** (uses `WithIncludes`) |
 
 ---
 
@@ -785,6 +853,7 @@ generator repository {
 | [`basic/02-dto-hidden.ts`](examples/basic/02-dto-hidden.ts) | `@dto(hidden: true)` — `password` 等のセンシティブフィールドを隠す |
 | [`basic/03-dto-profiles.ts`](examples/basic/03-dto-profiles.ts) | `@dto.profile` — pick/omit による用途別 DTO |
 | [`basic/04-json-typed-fields.ts`](examples/basic/04-json-typed-fields.ts) | `@json` — Json フィールドにカスタム TypeScript 型を指定 |
+| [`basic/05-dto-nested.ts`](examples/basic/05-dto-nested.ts) | `@dto(nested: true)` — リレーションをネスト DTO に自動変換 |
 
 ### Builder パターン
 
@@ -799,6 +868,7 @@ generator repository {
 | ファイル | 説明 |
 |---------|------|
 | [`repository/UserRepository.ts`](examples/repository/UserRepository.ts) | 生成されたリポジトリを継承してカスタムクエリを追加 |
+| [`repository/JsonField.repository.ts`](examples/repository/JsonField.repository.ts) | ジェネレーターなしのシンプルなリポジトリ利用 |
 
 > **注意:** リポジトリ生成はベータ機能です。別の `repository` ジェネレーターブロックを追加して有効化してください。
 
@@ -828,10 +898,18 @@ generator repository {
 |---------|------|
 | `findMany(args?)` | 条件に一致する全件を取得 |
 | `findFirst(args?)` | 条件に一致する最初の1件を取得 |
-| `create(args)` | レコードを作成してモデルを返す |
-| `update(args)` | レコードを更新してモデルを返す |
-| `delete(args)` | レコードを削除してモデルを返す |
 | `count(args?)` | 条件に一致するレコード数を返す |
+| `exists(where)` | 条件に一致するレコードの存在チェック |
+| `create(args)` | レコードを作成してモデルを返す |
+| `createMany(args)` | 一括作成（件数を返す） |
+| `update(args)` | レコードを更新してモデルを返す |
+| `updateMany(args)` | 一括更新（件数を返す） |
+| `upsert(args)` | レコードの作成または更新 |
+| `delete(args)` | レコードを削除してモデルを返す |
+| `deleteMany(args?)` | 一括削除（件数を返す） |
+| `aggregate(args)` | 集約操作（count, sum, avg, min, max） |
+| `cursorPaginate(args)` | カーソルベースのページネーション（大規模データ向け） |
+| `withTransaction(tx)` | トランザクションにバインドしたリポジトリインスタンスを生成 |
 
 ### 使い方 — 直接利用
 
@@ -991,8 +1069,8 @@ export type UserWithIncludes = PartialBy<
 | `DateTime` | `Date` | `string` | `.toISOString()` |
 | `Json` | `Prisma.JsonValue` | `Prisma.JsonValue` | なし（`@json` で上書き可） |
 | `Decimal` | `number` | `number` | `fromPrismaValue` で `.toNumber()` |
-| `BigInt` | `bigint` | `bigint` | なし |
-| `Bytes` | `ArrayBuffer` | `ArrayBuffer` | なし |
+| `BigInt` | `bigint` | `string` | `.toString()` |
+| `Bytes` | `Buffer` | `string` | `Buffer.from().toString('base64')` |
 | Enum | `Prisma{EnumName}` | `Prisma{EnumName}` | なし |
 | Relation | `{Type}WithIncludes` | `{Type}WithIncludes` | なし |
 
@@ -1126,6 +1204,64 @@ export class UserModel {
 | `fromPrismaValue()` | **影響なし**（含まれる） |
 | private フィールド | **影響なし**（保持される） |
 | getter | **影響なし**（アクセス可能） |
+
+---
+
+### `@dto(nested: true)` - ネスト DTO 変換
+
+リレーションフィールドを `toDto()` 出力時に自動的にそのモデルの DTO 形式に変換します。このアノテーションがない場合、リレーションは Prisma の `WithIncludes` 型のまま渡されます。
+
+#### 構文
+
+```prisma
+fieldName Model[] /// @dto(nested: true)
+```
+
+#### 使用例
+
+```prisma
+model User {
+  id    Int    @id @default(autoincrement())
+  email String
+  posts Post[] /// @dto(nested: true)
+  books Book[]
+}
+```
+
+#### 生成結果
+
+```ts
+// DTO 型 — posts は PostWithIncludes ではなく PostModelDto を使用
+export type UserModelDto = {
+  id: number;
+  email: string;
+  posts: PostModelDto[];        // @dto(nested: true) → ネスト DTO
+  books: BookWithIncludes[];    // アノテーションなし → 生の Prisma 型
+};
+
+export class UserModel {
+  toDto() {
+    return {
+      id: this._id,
+      email: this._email,
+      // posts は builder + toDto で自動変換される
+      posts: this._posts.map((el) =>
+        PostModel.builder().fromPrisma(el).build().toDto()
+      ),
+      books: this._books,
+    };
+  }
+}
+```
+
+#### 動作仕様
+
+| 対象 | nested の影響 |
+|------|-------------|
+| `{Model}ModelDto` 型 | リレーション型が `{Related}ModelDto` になる |
+| `toDto()` メソッド | `builder().fromPrisma().build().toDto()` で自動変換 |
+| `{Model}ModelConstructorArgs` 型 | **影響なし**（`WithIncludes` を使用） |
+| `fromPrismaValue()` | **影響なし**（`WithIncludes` を使用） |
 
 ---
 
