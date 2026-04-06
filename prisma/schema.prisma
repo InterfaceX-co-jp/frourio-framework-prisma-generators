@@ -12,6 +12,12 @@ generator model {
   additionalTypePath = "./@additionalType/index"
 }
 
+generator repository {
+  provider  = "node ./lib/generators/repository/generator.js"
+  output    = "./__generated__/repository"
+  modelPath = "./__generated__/model"
+}
+
 /// @dto.profile(name: Public, pick: [id, email, name])
 /// @dto.profile(name: Admin, omit: [password])
 model User {
@@ -20,7 +26,7 @@ model User {
   name     String?
   password String  /// @dto(hidden: true)
 
-  posts Post[]
+  posts Post[] /// @dto(nested: true)
   books Book[]
 
   initiatorUserNotification UserNotification[] @relation(name: "initiatorUser")

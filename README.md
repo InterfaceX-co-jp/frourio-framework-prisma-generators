@@ -13,6 +13,7 @@ A Prisma generator that produces immutable, type-safe TypeScript model classes f
 - Custom DTO profiles with pick/omit (`@dto.profile` annotation)
 - Auto-generated relation types (`WithIncludes`)
 - Automatic foreign key field exclusion when a relation field exists
+- **Repository generation** (beta) — auto-generated repository classes with `findBy`, `paginate`, and CRUD
 
 ## Requirements
 
@@ -42,6 +43,24 @@ generator frourio_framework_prisma_model_generator {
 | `output` | Output directory (relative to prisma schema) |
 | `additionalTypePath` | Import path for custom types used with `@json` annotation |
 
+### Repository Generator (Beta)
+
+Add a separate generator block to enable auto-generated repository classes:
+
+```prisma
+generator repository {
+    provider  = "frourio-framework-prisma-repository-generator"
+    output    = "__generated__/repository"
+    modelPath = "__generated__/model"    // Path to model generator output
+}
+```
+
+| Option | Description |
+|--------|-------------|
+| `provider` | Generator name (fixed value) |
+| `output` | Output directory (relative to prisma schema) |
+| `modelPath` | Path to model generator output (for import resolution) |
+
 ---
 
 ## Examples
@@ -65,12 +84,80 @@ Working examples are available in the [`examples/`](examples/) directory:
 | [`builder/02-test-fixture.ts`](examples/builder/02-test-fixture.ts) | Test fixtures with Faker |
 | [`builder/03-extend-model.ts`](examples/builder/03-extend-model.ts) | Custom fields, builder extension, DTO customization |
 
-### Repository Pattern
+### Repository Pattern (Beta)
 
 | File | Description |
 |------|-------------|
-| [`repository/UserRepository.ts`](examples/repository/UserRepository.ts) | Combining `fromPrismaValue` (strict) and builder (flexible) |
-| [`repository/JsonField.repository.ts`](examples/repository/JsonField.repository.ts) | Repository with `@json` typed fields |
+| [`repository/UserRepository.ts`](examples/repository/UserRepository.ts) | Extending the generated repository with custom queries |
+
+> **Note:** Repository generation is a beta feature. Add a separate `repository` generator block to enable it.
+
+---
+
+## Repository Generator (Beta)
+
+When the repository generator is enabled, it produces:
+
+- **`BaseRepository`** — abstract class with CRUD operations and pagination
+- **`{Model}Repository`** — concrete class per model with auto-generated query methods
+
+### Auto-Generated Methods
+
+For each model, the following methods are generated based on schema metadata:
+
+| Source | Generated Method | Example |
+|--------|-----------------|---------|
+| `@id` field | `findBy{Field}(value)` | `findById(id: number)` |
+| `@unique` field | `findBy{Field}(value)` | `findByEmail(email: string)` |
+| `@@unique([x, y])` | `findBy{X}And{Y}(x, y)` | `findByBookIdAndPostId(bookId, postId)` |
+| All models | `paginate(args?)` | Typed filtering, sorting, and pagination |
+
+### Inherited Methods (from BaseRepository)
+
+| Method | Description |
+|--------|-------------|
+| `findMany(args?)` | Find all matching records |
+| `findFirst(args?)` | Find the first matching record |
+| `create(args)` | Create a record and return the model |
+| `update(args)` | Update a record and return the model |
+| `delete(args)` | Delete a record and return the model |
+| `count(args?)` | Count matching records |
+
+### Usage — Direct
+
+```ts
+import { PrismaClient } from "@prisma/client";
+import { UserRepository } from "./__generated__/repository/User.repository";
+
+const prisma = new PrismaClient();
+const userRepo = new UserRepository(prisma.user);
+
+// Auto-generated findBy methods
+const user = await userRepo.findById(1);
+const userByEmail = await userRepo.findByEmail("alice@example.com");
+
+// Paginate with typed filters
+const page = await userRepo.paginate({
+  page: 1,
+  perPage: 20,
+  where: { name: { contains: "alice", mode: "insensitive" } },
+  orderBy: { field: "id", direction: "desc" },
+});
+```
+
+### Usage — Extending with Custom Methods
+
+```ts
+import { PrismaClient } from "@prisma/client";
+import { UserRepository as GeneratedUserRepository } from "./__generated__/repository/User.repository";
+
+export class UserRepository extends GeneratedUserRepository {
+  // Add custom query methods
+  async findActiveUsers() {
+    return this.findMany({ where: { active: true } });
+  }
+}
+```
 
 ---
 
@@ -636,6 +723,7 @@ Prisma schema からイミュータブルな TypeScript モデルクラスを自
 - カスタム DTO プロファイル（`@dto.profile` アノテーション）
 - リレーションフィールドの自動型生成（`WithIncludes` 型）
 - 外部キーフィールドの自動除外（リレーションフィールドが存在する場合）
+- **リポジトリ生成**（ベータ） — `findBy`、`paginate`、CRUD 付きリポジトリクラスを自動生成
 
 ## 要件
 
@@ -665,6 +753,24 @@ generator frourio_framework_prisma_model_generator {
 | `output` | 生成先ディレクトリ（Prisma schema からの相対パス） |
 | `additionalTypePath` | `@json` アノテーションで使用する型のインポートパス |
 
+### リポジトリジェネレーター（ベータ）
+
+別のジェネレーターブロックを追加してリポジトリクラスの自動生成を有効にします:
+
+```prisma
+generator repository {
+    provider  = "frourio-framework-prisma-repository-generator"
+    output    = "__generated__/repository"
+    modelPath = "__generated__/model"    // モデルジェネレーターの出力パス
+}
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `provider` | ジェネレーター名（固定値） |
+| `output` | 生成先ディレクトリ（Prisma schema からの相対パス） |
+| `modelPath` | モデルジェネレーターの出力パス（import 解決用） |
+
 ---
 
 ## サンプルコード
@@ -692,8 +798,76 @@ generator frourio_framework_prisma_model_generator {
 
 | ファイル | 説明 |
 |---------|------|
-| [`repository/UserRepository.ts`](examples/repository/UserRepository.ts) | `fromPrismaValue`���厳密）��� Builder（柔軟）の使い分け |
-| [`repository/JsonField.repository.ts`](examples/repository/JsonField.repository.ts) | `@json` 型付きフィールドのリポジトリ |
+| [`repository/UserRepository.ts`](examples/repository/UserRepository.ts) | 生成されたリポジトリを継承してカスタムクエリを追加 |
+
+> **注意:** リポジトリ生成はベータ機能です。別の `repository` ジェネレーターブロックを追加して有効化してください。
+
+---
+
+## リポジトリジェネレーター（ベータ）
+
+リポジトリジェネレーターを有効にすると、以下が生成されます：
+
+- **`BaseRepository`** — CRUD 操作とページネーションを提供する抽象クラス
+- **`{Model}Repository`** — モデルごとの具象クラス（自動生成されたクエリメソッド付き）
+
+### 自動生成されるメソッド
+
+スキーマのメタデータに基づいて、各モデルに以下のメソッドが生成されます：
+
+| ソース | 生成されるメソッド | 例 |
+|-------|-----------------|-----|
+| `@id` フィールド | `findBy{Field}(value)` | `findById(id: number)` |
+| `@unique` フィールド | `findBy{Field}(value)` | `findByEmail(email: string)` |
+| `@@unique([x, y])` | `findBy{X}And{Y}(x, y)` | `findByBookIdAndPostId(bookId, postId)` |
+| 全モデル共通 | `paginate(args?)` | 型付きフィルタリング、ソート、ページネーション |
+
+### 継承メソッド（BaseRepository から）
+
+| メソッド | 説明 |
+|---------|------|
+| `findMany(args?)` | 条件に一致する全件を取得 |
+| `findFirst(args?)` | 条件に一致する最初の1件を取得 |
+| `create(args)` | レコードを作成してモデルを返す |
+| `update(args)` | レコードを更新してモデルを返す |
+| `delete(args)` | レコードを削除してモデルを返す |
+| `count(args?)` | 条件に一致するレコード数を返す |
+
+### 使い方 — 直接利用
+
+```ts
+import { PrismaClient } from "@prisma/client";
+import { UserRepository } from "./__generated__/repository/User.repository";
+
+const prisma = new PrismaClient();
+const userRepo = new UserRepository(prisma.user);
+
+// 自動生成された findBy メソッド
+const user = await userRepo.findById(1);
+const userByEmail = await userRepo.findByEmail("alice@example.com");
+
+// 型付きフィルタでページネーション
+const page = await userRepo.paginate({
+  page: 1,
+  perPage: 20,
+  where: { name: { contains: "alice", mode: "insensitive" } },
+  orderBy: { field: "id", direction: "desc" },
+});
+```
+
+### 使い方 — カスタムメソッドの追加
+
+```ts
+import { PrismaClient } from "@prisma/client";
+import { UserRepository as GeneratedUserRepository } from "./__generated__/repository/User.repository";
+
+export class UserRepository extends GeneratedUserRepository {
+  // カスタムクエリメソッドを追加
+  async findActiveUsers() {
+    return this.findMany({ where: { active: true } });
+  }
+}
+```
 
 ---
 

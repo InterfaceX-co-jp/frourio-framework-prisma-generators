@@ -130,6 +130,19 @@ export default class Transformer {
     return hidden;
   }
 
+  private getNestedFieldNames(args: { model: PrismaDMMF.Model }): Set<string> {
+    const nested = new Set<string>();
+    for (const field of args.model.fields) {
+      if (field.relationName) {
+        const annotation = parseFieldDtoAnnotation({ field });
+        if (annotation?.nested) {
+          nested.add(field.name);
+        }
+      }
+    }
+    return nested;
+  }
+
   private getProfileFields(args: {
     model: PrismaDMMF.Model;
     profile: DtoProfile;
@@ -164,8 +177,19 @@ export default class Transformer {
     return [...args.model.fields];
   }
 
-  private renderDtoFieldKeyValue(args: { field: PrismaDMMF.Field }) {
+  private renderDtoFieldKeyValue(args: {
+    field: PrismaDMMF.Field;
+    nestedFields?: Set<string>;
+  }) {
     if (args.field.relationName) {
+      if (args.nestedFields?.has(args.field.name)) {
+        const dtoType = `${changeCase.pascalCase(args.field.type)}ModelDto`;
+        const requiredOrNullKey = args.field.isRequired ? "" : "?";
+        const requiredOrNullValue = args.field.isRequired ? "" : " | null";
+        return args.field.isList
+          ? `${args.field.name}${requiredOrNullKey}: ${dtoType}[]`
+          : `${args.field.name}${requiredOrNullKey}: ${dtoType}${requiredOrNullValue}`;
+      }
       return this.renderKeyValueFieldStringFromDMMFField({
         field: args.field,
       });
@@ -180,8 +204,26 @@ export default class Transformer {
     });
   }
 
-  private renderDtoFieldValue(args: { field: PrismaDMMF.Field }) {
+  private renderDtoFieldValue(args: {
+    field: PrismaDMMF.Field;
+    nestedFields?: Set<string>;
+  }) {
     const accessor = `this._${args.field.name}`;
+
+    if (args.field.relationName && args.nestedFields?.has(args.field.name)) {
+      const modelName = `${changeCase.pascalCase(args.field.type)}Model`;
+      const conversion = `${modelName}.builder().fromPrisma(el).build().toDto()`;
+
+      if (args.field.isList) {
+        return `${args.field.name}: ${accessor}.map((el) => ${conversion})`;
+      }
+      if (args.field.isRequired) {
+        const singleConversion = `${modelName}.builder().fromPrisma(${accessor}).build().toDto()`;
+        return `${args.field.name}: ${singleConversion}`;
+      }
+      const singleConversion = `${modelName}.builder().fromPrisma(${accessor}!).build().toDto()`;
+      return `${args.field.name}: ${accessor} ? ${singleConversion} : null`;
+    }
 
     if (args.field.type === "DateTime") {
       if (args.field.isList) {
@@ -195,10 +237,11 @@ export default class Transformer {
 
   private generateModelDtoType(args: { model: PrismaDMMF.Model }) {
     const hiddenFields = this.getHiddenFieldNames({ model: args.model });
+    const nestedFields = this.getNestedFieldNames({ model: args.model });
 
     let keyValueList = args.model.fields
       .filter((field) => !hiddenFields.has(field.name))
-      .map((field) => this.renderDtoFieldKeyValue({ field }));
+      .map((field) => this.renderDtoFieldKeyValue({ field, nestedFields }));
 
     const fields = this.removeRelationFromFieldsId({
       model: args.model,
@@ -360,17 +403,18 @@ export default class Transformer {
 
   private generateToDtoMethod(args: { model: PrismaDMMF.Model }) {
     const hiddenFields = this.getHiddenFieldNames({ model: args.model });
+    const nestedFields = this.getNestedFieldNames({ model: args.model });
 
     const keyValueList = args.model.fields
       .filter((field) => !hiddenFields.has(field.name))
-      .map((field) => this.renderDtoFieldValue({ field }));
+      .map((field) => this.renderDtoFieldValue({ field, nestedFields }));
 
     const fields = this.removeRelationFromFieldsId({
       model: args.model,
       mutatingList: keyValueList,
     });
 
-    return `toDto() {
+    return `toDto(): ${args.model.name}ModelDto {
             return {
                 ${fields.join(",\n")}
             };
@@ -381,13 +425,14 @@ export default class Transformer {
     model: PrismaDMMF.Model;
     profile: DtoProfile;
   }) {
+    const nestedFields = this.getNestedFieldNames({ model: args.model });
     const profileFields = this.getProfileFields({
       model: args.model,
       profile: args.profile,
     });
 
     let keyValueList = profileFields.map((field) =>
-      this.renderDtoFieldKeyValue({ field }),
+      this.renderDtoFieldKeyValue({ field, nestedFields }),
     );
 
     const fields = this.removeRelationFromFieldsId({
@@ -406,13 +451,14 @@ export default class Transformer {
     model: PrismaDMMF.Model;
     profile: DtoProfile;
   }) {
+    const nestedFields = this.getNestedFieldNames({ model: args.model });
     const profileFields = this.getProfileFields({
       model: args.model,
       profile: args.profile,
     });
 
     const keyValueList = profileFields.map((field) =>
-      this.renderDtoFieldValue({ field }),
+      this.renderDtoFieldValue({ field, nestedFields }),
     );
 
     const fields = this.removeRelationFromFieldsId({
@@ -611,6 +657,23 @@ export default class Transformer {
     };
   }
 
+  private generateNestedModelImports(args: { model: PrismaDMMF.Model }): string {
+    const nestedFields = this.getNestedFieldNames({ model: args.model });
+    if (nestedFields.size === 0) return "";
+
+    const imports = new Set<string>();
+    for (const field of args.model.fields) {
+      if (field.relationName && nestedFields.has(field.name)) {
+        const modelName = changeCase.pascalCase(field.type);
+        imports.add(
+          `import { ${modelName}Model, type ${modelName}ModelDto } from './${field.type}.model';`,
+        );
+      }
+    }
+
+    return [...imports].join("\n");
+  }
+
   generateWithAndWithoutIncludePrismaType(args: {
     model: PrismaDMMF.Model;
     pascalCasedModel: { name: string };
@@ -675,6 +738,7 @@ export default class Transformer {
           ${this.generatePrismaRuntimeTypeImports({ model: camelCasedModel })}
           ${this.generatePrismaModelImportStatement({ model: camelCasedModel })}
           ${this.generateAdditionalTypeImport({ model: camelCasedModel })}
+          ${this.generateNestedModelImports({ model: camelCasedModel })}
 
           type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
           type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;

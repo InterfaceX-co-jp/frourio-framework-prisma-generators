@@ -8,10 +8,16 @@ export const parseFieldDtoAnnotation = (args: {
   const documentation = args.field.documentation;
 
   if (documentation) {
-    const hidden = /@dto\(hidden:\s*true\)/.test(documentation);
+    const match = documentation.match(/@dto\(([^)]+)\)/);
 
-    if (hidden) {
-      return { hidden: true };
+    if (match) {
+      const content = match[1];
+      const hidden = /hidden:\s*true/.test(content);
+      const nested = /nested:\s*true/.test(content);
+
+      if (hidden || nested) {
+        return { hidden, nested };
+      }
     }
   }
 

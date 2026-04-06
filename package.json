@@ -3,7 +3,8 @@
   "version": "7.3.0",
   "description": "",
   "bin": {
-    "frourio-framework-prisma-model-generator": "lib/generators/model/generator.js"
+    "frourio-framework-prisma-model-generator": "lib/generators/model/generator.js",
+    "frourio-framework-prisma-repository-generator": "lib/generators/repository/generator.js"
   },
   "type": "commonjs",
   "scripts": {
