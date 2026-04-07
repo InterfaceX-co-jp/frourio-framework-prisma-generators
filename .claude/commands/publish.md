@@ -4,22 +4,22 @@ Run the full release pipeline: version bump, build, PR, merge, and npm publish.
 
 ### Versioning
 
-Version format: `{prisma_major}.{prisma_minor}.0-rev{N}`
+Version format: `{prisma_major}.{prisma_minor}.{patch}`
 
-- The major.minor MUST match Prisma's `@prisma/client` version in `package.json` dependencies
-- The `-revN` suffix is our own revision counter for changes independent of Prisma
-- First release for a Prisma version: `7.7.0-rev1`
-- Subsequent releases: `7.7.0-rev2`, `7.7.0-rev3`, etc.
-- When Prisma bumps: reset to `X.Y.0-rev1`
+- The major.minor MUST match Prisma's `@prisma/client` major.minor in `package.json` dependencies
+- The patch number is our own revision counter, starting from 0
+- When Prisma bumps major.minor: reset patch to 0 (e.g., `7.8.0`)
+- Subsequent releases for the same Prisma version: increment patch (e.g., `7.7.1`, `7.7.2`)
 
 Examples:
-- Prisma 7.7.0, first release → `7.7.0-rev1`
-- Prisma 7.7.0, second release → `7.7.0-rev2`
-- Prisma 7.8.0, first release → `7.8.0-rev1`
+- Prisma 7.7.x, first release → `7.7.0`
+- Prisma 7.7.x, bug fix → `7.7.1`
+- Prisma 7.7.x, new feature → `7.7.2`
+- Prisma 7.8.x, first release → `7.8.0`
 
 ### Steps
 
-1. **Determine version**: Read `@prisma/client` version from `package.json` dependencies. Check `npm view frourio-framework-prisma-generators versions --json` for published versions. Use the next `-revN` for the current Prisma major.minor.
+1. **Determine version**: Read `@prisma/client` version from `package.json` dependencies. Check `npm view frourio-framework-prisma-generators versions --json` for published versions. Use the next patch for the current Prisma major.minor.
 
 2. **Typecheck**: Run `npm run typecheck` and confirm it passes.
 
