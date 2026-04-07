@@ -19,10 +19,10 @@
 
 ## Low（あると嬉しい）
 
-- [ ] **Getter の戻り型が暗黙的** — `get name()` に明示的な戻り型アノテーションがない。`readonly` プロパティから推論されるが、IDE での可読性のため明示すると良い
-- [ ] **Model クラスの `equals` / `clone` メソッドがない** — 値オブジェクトとしての比較やコピーができない
-- [ ] **Builder の `merge` / `fromPartial` がない** — 部分的な更新のために既存のモデルから Builder を作る手段がない
-- [ ] **`@map` / `@@map` サポート** — DB カラム名とフィールド名が異なる場合の考慮（現状 Prisma の DMMF が処理するが、一部エッジケースがあり得る）
+- [x] **Getter の戻り型が暗黙的** — `get name(): string` のように明示的な戻り型アノテーションを追加。nullable/optional も正確に反映
+- [x] **Model クラスの `equals` / `clone` メソッドがない** — `equals(other)` で全フィールド `===` 比較、`clone()` で同一値の新インスタンス生成
+- [x] **Builder の `merge` / `fromPartial` がない** — `merge(model)` で既存モデルから全フィールドをコピー、`fromPartial(args)` で部分オブジェクトからセット
+- [x] **`@map` / `@@map` サポート** — Prisma の DMMF が完全に抽象化しており、スキーマ名で動作するため追加対応不要と確認
 - [ ] **Composite types (Prisma 未対応) の将来的な備え** — Prisma が composite types を導入した場合の拡張性
 
 ## Infrastructure（テスト・CI/CD・品質基盤）
