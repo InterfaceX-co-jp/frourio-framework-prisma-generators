@@ -213,7 +213,14 @@ export default class Transformer {
     field: PrismaDMMF.Field;
     nestedFields?: Set<string>;
   }) {
-    const accessor = `this._${args.field.name}`;
+    // Fields that are required but have defaults (id, createdAt, etc.) are stored
+    // as optional private fields (for constructor flexibility), but are guaranteed
+    // to exist after DB retrieval. Use non-null assertion for type safety in toDto().
+    const needsAssertion =
+      args.field.isRequired && this.hasDefaultOrUpdatedAt(args.field);
+    const accessor = needsAssertion
+      ? `this._${args.field.name}!`
+      : `this._${args.field.name}`;
 
     if (args.field.relationName && args.nestedFields?.has(args.field.name)) {
       const modelName = `${changeCase.pascalCase(args.field.type)}Model`;
