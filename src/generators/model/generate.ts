@@ -4,6 +4,7 @@ import { parseEnvValue } from "@prisma/internals";
 import removeDir from "../utils/removeDir";
 import fs from "fs";
 import path from "path";
+import { loadSpec } from "../../spec/loader";
 
 export async function generate(options: GeneratorOptions) {
   try {
@@ -12,6 +13,15 @@ export async function generate(options: GeneratorOptions) {
     const t = new Transformer({
       models,
     });
+
+    const specPath = options.generator.config.spec as string | undefined;
+    if (specPath) {
+      const spec = await loadSpec({
+        specPath,
+        schemaPath: options.schemaPath,
+      });
+      t.setSpec({ spec });
+    }
 
     if (options.generator.output) {
       const parsedPath = parseEnvValue(options.generator.output as EnvValue);

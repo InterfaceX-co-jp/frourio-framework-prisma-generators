@@ -2,6 +2,7 @@ import type { DMMF as PrismaDMMF } from "@prisma/generator-helper";
 import type { ReadonlyDeep } from "../utils/types";
 import { writeFileSafely } from "../utils/writeFileSafely";
 import * as changeCase from "change-case-all";
+import type { ViewsSpec } from "../../spec/types";
 
 interface UniqueComposite {
   name: string | null;
@@ -12,6 +13,7 @@ export class RepositoryTransformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]>;
   private readonly _outputPath: string;
   private readonly _modelImportPath: string;
+  private _spec: ViewsSpec | null = null;
 
   constructor(args: {
     models: ReadonlyDeep<PrismaDMMF.Model[]>;
@@ -21,6 +23,10 @@ export class RepositoryTransformer {
     this._models = args.models;
     this._outputPath = args.outputPath;
     this._modelImportPath = args.modelImportPath;
+  }
+
+  setSpec(args: { spec: ViewsSpec | null }) {
+    this._spec = args.spec;
   }
 
   // =========================================
