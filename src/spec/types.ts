@@ -9,8 +9,7 @@
 export type ViewSpecSelect = Record<string, unknown>;
 
 /** Function transform: receives the raw DB value, returns the DTO value. */
-
-export type TransformFn = (v: any) => unknown;
+export type TransformFn<TIn = unknown, TOut = unknown> = (v: TIn) => TOut;
 
 /**
  * Static map transform — sugar for simple enum→label mappings.
@@ -18,14 +17,16 @@ export type TransformFn = (v: any) => unknown;
  */
 export type TransformStaticMap = Record<string, string>;
 
-export type TransformValue = TransformFn | TransformStaticMap;
+export type TransformValue<TIn = unknown, TOut = unknown> =
+  | TransformFn<TIn, TOut>
+  | TransformStaticMap;
 
 /** Computed field: adds a new property derived from the full row. */
-export type ComputedFieldDefinition = {
+export type ComputedFieldDefinition<TRow = unknown, TResult = unknown> = {
   /** TypeScript type of the computed value (e.g. `"string"`, `"number"`). */
   type: string;
   /** Function that derives the value from the raw DB row. */
-  from: (v: any) => unknown;
+  from: (v: TRow) => TResult;
 };
 
 export type SelectViewSpec = {
@@ -47,10 +48,15 @@ export type SelectViewSpec = {
  * Raw view: bypasses select-based generation. The `raw` function executes an
  * arbitrary Prisma query, and `map` converts the result to the DTO. DTO type
  * is inferred from `map`'s return type.
+ *
+ * Type parameters:
+ * - TArgs: shape of the args object passed to `raw`
+ * - TRow:  shape returned by `raw` (input to `map`)
+ * - TDto:  shape returned by `map` (the final DTO)
  */
-export type RawViewSpec = {
-  raw: (prisma: any, args: any) => Promise<any>;
-  map: (row: any) => any;
+export type RawViewSpec<TArgs = unknown, TRow = unknown, TDto = unknown> = {
+  raw: (prisma: unknown, args: TArgs) => Promise<TRow | null>;
+  map: (row: TRow) => TDto;
 };
 
 export type ViewSpec = SelectViewSpec | RawViewSpec;
