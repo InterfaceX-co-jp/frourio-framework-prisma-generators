@@ -28,7 +28,7 @@ export type ComputedFieldDefinition = {
   from: (v: any) => unknown;
 };
 
-export type ViewSpec = {
+export type SelectViewSpec = {
   select: ViewSpecSelect;
   /**
    * Field-level transforms keyed by dot-path relative to the view root.
@@ -42,6 +42,22 @@ export type ViewSpec = {
    */
   computed?: Record<string, ComputedFieldDefinition>;
 };
+
+/**
+ * Raw view: bypasses select-based generation. The `raw` function executes an
+ * arbitrary Prisma query, and `map` converts the result to the DTO. DTO type
+ * is inferred from `map`'s return type.
+ */
+export type RawViewSpec = {
+  raw: (prisma: any, args: any) => Promise<any>;
+  map: (row: any) => any;
+};
+
+export type ViewSpec = SelectViewSpec | RawViewSpec;
+
+export function isRawViewSpec(spec: ViewSpec): spec is RawViewSpec {
+  return "raw" in spec && "map" in spec;
+}
 
 export type ModelViewsSpec = {
   [viewName: string]: ViewSpec;

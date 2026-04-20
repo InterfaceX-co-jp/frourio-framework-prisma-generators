@@ -53,9 +53,10 @@ function validateSpec(input: unknown, sourcePath: string): ViewsSpec {
           `[Frourio Framework] spec: view "${modelName}.${viewName}" must be an object (got ${typeOf(viewSpec)})`,
         );
       }
-      if (!("select" in viewSpec) || !isPlainObject(viewSpec.select)) {
+      const isRaw = "raw" in viewSpec && "map" in viewSpec;
+      if (!isRaw && (!("select" in viewSpec) || !isPlainObject(viewSpec.select))) {
         throw new Error(
-          `[Frourio Framework] spec: view "${modelName}.${viewName}" must have a "select" object`,
+          `[Frourio Framework] spec: view "${modelName}.${viewName}" must have a "select" object or "raw"+"map" functions`,
         );
       }
     }

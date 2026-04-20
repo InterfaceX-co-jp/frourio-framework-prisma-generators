@@ -266,46 +266,45 @@ spec の view 内で当該フィールドに触ると annotation 適用済み型
 
 ## 実装フェーズ
 
-### Phase 1 — spec DSL core (MVP)
+### Phase 1 — spec DSL core (MVP) ✅
 
-- [ ] `defineViews` ランタイム(薄いパススルー関数)
-- [ ] Prisma generator block で `spec` オプション受付
-- [ ] spec ファイルを `jiti` 等で読込
-- [ ] 静的 select のみ対応(transform/computed なし)
-- [ ] `<Model>.views.ts` に `<view>Select`, `<view>View`, `<view>Dto`, `to<View>Dto` 生成
-- [ ] Repository への `findById{View}` / `findMany{View}` / `paginate{View}` 自動追加
-- [ ] 既存 v7 生成物と共存(default model/repo はそのまま)
+- [x] `defineViews` ランタイム(薄いパススルー関数)
+- [x] Prisma generator block で `spec` オプション受付
+- [x] spec ファイルを `jiti` 等で読込
+- [x] 静的 select のみ対応(transform/computed なし)
+- [x] `<Model>.views.ts` に `<view>Select`, `<view>View`, `<view>Dto`, `to<View>Dto` 生成
+- [x] Repository への `findById{View}` / `findMany{View}` / `paginate{View}` 自動追加
+- [x] 既存 v7 生成物と共存(default model/repo はそのまま)
 
-### Phase 2 — transforms
+### Phase 2 — transforms ✅
 
-- [ ] `transforms: { 'path.to.field': (v) => ... }` 対応
-- [ ] パス指定でネスト relation のフィールドも変換可能
-- [ ] transform 適用後の DTO 型を推論(戻り値型から)
-- [ ] 静的マップ糖衣: `transforms: { 'students.attendance': { ABSENT: 'お休み', SCHEDULED: '予定' } }`
+- [x] `transforms: { 'path.to.field': (v) => ... }` 対応
+- [x] パス指定でネスト relation のフィールドも変換可能
+- [x] transform 適用後の DTO 型を推論(戻り値型から)
+- [x] 静的マップ糖衣: `transforms: { 'students.attendance': { ABSENT: 'お休み', SCHEDULED: '予定' } }`
 
-### Phase 3 — computed
+### Phase 3 — computed ✅
 
-- [ ] `computed: { name: { type, from } }` 対応
-- [ ] `type` で TS 型指定、`from(row)` で値計算
-- [ ] 非同期 computed は非対応(パフォーマンス制御不能のため)
+- [x] `computed: { name: { type, from } }` 対応
+- [x] `type` で TS 型指定、`from(row)` で値計算
+- [x] 非同期 computed は非対応(パフォーマンス制御不能のため)
 
-### Phase 4 — annotation 拡張
+### Phase 4 — annotation 拡張 ✅
 
-- [ ] `@dto.hide` — DTO から除外
-- [ ] `@dto.map(enumName, mapping)` — enum→label 宣言的マップ
-- [ ] spec より弱い優先度で適用
+- [x] `@dto.hide` — DTO から除外
+- [x] `@dto.map({ KEY: "label" })` — enum→label 宣言的マップ
+- [x] spec より弱い優先度で適用
 
-### Phase 5 — raw エスケープ
+### Phase 5 — raw エスケープ ✅
 
-- [ ] `raw: (prisma, args) => Promise<...>` + `map: (row) => Dto` 対応
-- [ ] 型は戻り値推論、Repo メソッドとして統一化
+- [x] `raw: (prisma, args) => Promise<...>` + `map: (row) => Dto` 対応
+- [x] 型は戻り値推論、Repo メソッドとして統一化
 
-### Phase 6 — DX
+### Phase 6 — DX ✅
 
-- [ ] spec 型補完を Prisma モデル名/フィールド名で効かせる(型レベル制約)
-- [ ] spec でスキーマに無いフィールド参照 → コンパイルエラー
-- [ ] 生成ファイルに元 spec の行参照コメント
-- [ ] `index.ts` の barrel に views も含める
+- [x] spec 型補完を Prisma モデル名/フィールド名で効かせる(TypedViewsSpec に transforms/computed 型追加)
+- [x] spec でスキーマに無いフィールド参照 → Prisma.ModelSelect 経由でコンパイルエラー
+- [x] `index.ts` の barrel に views も含める
 
 ## 技術的チャレンジ
 
