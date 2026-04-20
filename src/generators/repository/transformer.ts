@@ -3,6 +3,7 @@ import type { ReadonlyDeep } from "../utils/types";
 import { writeFileSafely } from "../utils/writeFileSafely";
 import * as changeCase from "change-case-all";
 import type { ViewsSpec } from "../../spec/types";
+import { isRawViewSpec } from "../../spec/types";
 
 interface UniqueComposite {
   name: string | null;
@@ -427,14 +428,21 @@ ${relationSetters.join("\n")}
     const modelCamel = changeCase.camelCase(model.name);
     const allImports: string[] = [];
 
-    for (const viewName of Object.keys(modelViews)) {
+    for (const [viewName, viewSpec] of Object.entries(modelViews)) {
       const viewPascal = changeCase.pascalCase(viewName);
-      allImports.push(
-        `${modelCamel}${viewPascal}Select`,
-        `${model.name}${viewPascal}View`,
-        `${model.name}${viewPascal}Dto`,
-        `to${model.name}${viewPascal}Dto`,
-      );
+      if (isRawViewSpec(viewSpec)) {
+        allImports.push(
+          `${model.name}${viewPascal}Dto`,
+          `find${model.name}${viewPascal}Raw`,
+        );
+      } else {
+        allImports.push(
+          `${modelCamel}${viewPascal}Select`,
+          `${model.name}${viewPascal}View`,
+          `${model.name}${viewPascal}Dto`,
+          `to${model.name}${viewPascal}Dto`,
+        );
+      }
     }
 
     return `import { ${allImports.join(", ")} } from '../views/${model.name}.views';`;
@@ -449,11 +457,21 @@ ${relationSetters.join("\n")}
     const idFields = this.getIdFields(model);
     const methods: string[] = [];
 
-    for (const viewName of Object.keys(modelViews)) {
+    for (const [viewName, viewSpec] of Object.entries(modelViews)) {
       const viewPascal = changeCase.pascalCase(viewName);
+      const dtoType = `${model.name}${viewPascal}Dto`;
+
+      if (isRawViewSpec(viewSpec)) {
+        // Raw view: delegate to the generated helper function
+        methods.push(`
+    async find${viewPascal}Raw(prisma: any, args: any): Promise<${dtoType} | null> {
+      return find${model.name}${viewPascal}Raw(prisma, args);
+    }`);
+        continue;
+      }
+
       const selectConst = `${modelCamel}${viewPascal}Select`;
       const viewType = `${model.name}${viewPascal}View`;
-      const dtoType = `${model.name}${viewPascal}Dto`;
       const mapper = `to${model.name}${viewPascal}Dto`;
 
       if (idFields.length > 0) {
