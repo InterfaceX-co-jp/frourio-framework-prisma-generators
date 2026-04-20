@@ -196,14 +196,14 @@ export async function generateBaseRepository(outputPath: string) {
       /**
        * Offset-based pagination.
        */
-      protected async paginate(args: {
-        page: number;
-        perPage: number;
-        where?: Record<string, any>;
-        orderBy?: Record<string, any>;
-        include?: Record<string, any>;
-      }): Promise<PaginateResult<TModel>> {
-        const { page, perPage, where, orderBy, include } = args;
+      protected async paginate(args: any): Promise<PaginateResult<TModel>> {
+        const { page, perPage, where, orderBy, include } = args as {
+          page: number;
+          perPage: number;
+          where?: Record<string, any>;
+          orderBy?: Record<string, any>;
+          include?: Record<string, any>;
+        };
         const skip = (page - 1) * perPage;
 
         const [records, total] = await Promise.all([
@@ -234,15 +234,15 @@ export async function generateBaseRepository(outputPath: string) {
        * @param args.take - Number of items to fetch
        * @param args.cursorField - The field to use as cursor (defaults to 'id')
        */
-      protected async cursorPaginate(args: {
-        cursor?: string | number;
-        take: number;
-        cursorField?: string;
-        where?: Record<string, any>;
-        orderBy?: Record<string, any>;
-        include?: Record<string, any>;
-      }): Promise<CursorPaginateResult<TModel>> {
-        const { cursor, take, where, orderBy, include } = args;
+      protected async cursorPaginate(args: any): Promise<CursorPaginateResult<TModel>> {
+        const { cursor, take, where, orderBy, include } = args as {
+          cursor?: string | number;
+          take: number;
+          cursorField?: string;
+          where?: Record<string, any>;
+          orderBy?: Record<string, any>;
+          include?: Record<string, any>;
+        };
         const cursorField = args.cursorField ?? 'id';
 
         const findArgs: any = {
