@@ -236,3 +236,275 @@ describe("ViewsTransformer", () => {
     expect(content).toContain("UserListItemView");
   });
 });
+
+// ─── Phase 2: transforms ────────────────────────────────────────────────────
+
+const lessonStudentFields = [
+  makeField({ name: "id", type: "Int", isId: true }),
+  makeField({ name: "attendance", type: "String" }),
+  makeField({ name: "note", type: "String", isRequired: false }),
+];
+
+const lessonFields = [
+  makeField({ name: "id", type: "Int", isId: true }),
+  makeField({ name: "date", type: "String" }),
+  makeField({ name: "status", type: "String" }),
+  makeField({
+    name: "students",
+    type: "LessonStudent",
+    kind: "object",
+    isList: true,
+    isRequired: true,
+    relationName: "LessonStudents",
+  } as any),
+];
+
+const lessonStudentModel = makeModel("LessonStudent", lessonStudentFields);
+const lessonModel = makeModel("Lesson", lessonFields);
+
+describe("ViewsTransformer — Phase 2 transforms", () => {
+  beforeEach(() => {
+    mockedWriteFileSafely.mockClear();
+  });
+
+  it("static map: emits map const before view blocks", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: {
+              status: { ACTIVE: "開催中", CANCELLED: "中止" },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStatusMap");
+    expect(content).toContain('"ACTIVE":"開催中"');
+    expect(content).toContain("as const");
+  });
+
+  it("static map: DTO type uses literal union of map values", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: {
+              status: { ACTIVE: "開催中", CANCELLED: "中止" },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain('"開催中" | "中止"');
+    // original string type should not appear for that field
+    expect(content).not.toMatch(/status: string/);
+  });
+
+  it("static map: mapper uses map lookup", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: {
+              status: { ACTIVE: "開催中", CANCELLED: "中止" },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStatusMap[v.status as keyof typeof _detailStatusMap]");
+  });
+
+  it("function transform: emits transform const", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: {
+              status: (v: string) => (v === "CANCELLED" ? "中止" : "開催中"),
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStatusTransform");
+    expect(content).toContain("中止");
+  });
+
+  it("function transform: DTO type uses ReturnType", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: {
+              status: (v: string) => (v === "CANCELLED" ? "中止" : "開催中"),
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("ReturnType<typeof _detailStatusTransform>");
+  });
+
+  it("function transform: mapper calls transform function", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: {
+              status: (v: string) => (v === "CANCELLED" ? "中止" : "開催中"),
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStatusTransform(v.status)");
+  });
+
+  it("nested path: static map transforms field inside array relation", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: {
+              id: true,
+              students: {
+                select: { id: true, attendance: true },
+              },
+            },
+            transforms: {
+              "students.attendance": { ABSENT: "お休み", SCHEDULED: "予定" },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    // Map const emitted
+    expect(content).toContain("_detailStudentsAttendanceMap");
+    // DTO type has literal union
+    expect(content).toContain('"お休み" | "予定"');
+    // Mapper uses map lookup inside .map()
+    expect(content).toContain(
+      "_detailStudentsAttendanceMap[item.attendance as keyof typeof _detailStudentsAttendanceMap]",
+    );
+  });
+
+  it("nested path: function transform transforms field inside array relation", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: {
+              id: true,
+              students: {
+                select: { id: true, attendance: true },
+              },
+            },
+            transforms: {
+              "students.attendance": (v: string) =>
+                v === "ABSENT" ? "お休み" : "予定",
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStudentsAttendanceTransform");
+    expect(content).toContain("ReturnType<typeof _detailStudentsAttendanceTransform>");
+    expect(content).toContain("_detailStudentsAttendanceTransform(item.attendance)");
+  });
+
+  it("untransformed fields alongside transformed fields remain unchanged", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, date: true, status: true },
+            transforms: {
+              status: { ACTIVE: "開催中", CANCELLED: "中止" },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("id: number");
+    expect(content).toContain("date: string");
+    expect(content).toContain("v.id");
+    expect(content).toContain("v.date");
+  });
+
+  it("two views with same path but different transforms get distinct consts", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, status: true },
+            transforms: { status: { ACTIVE: "開催中" } },
+          },
+          listItem: {
+            select: { id: true, status: true },
+            transforms: { status: { ACTIVE: "active" } },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStatusMap");
+    expect(content).toContain("_listItemStatusMap");
+  });
+});

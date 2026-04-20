@@ -1,8 +1,37 @@
 import type { DMMF } from "@prisma/generator-helper";
 import type { ReadonlyDeep } from "../utils/types";
 import { writeFileSafely } from "../utils/writeFileSafely";
-import type { ViewsSpec } from "../../spec/types";
+import type { ViewsSpec, TransformValue, TransformStaticMap } from "../../spec/types";
 import path from "path";
+
+function isStaticMap(v: TransformValue): v is TransformStaticMap {
+  return typeof v === "object" && v !== null;
+}
+
+/**
+ * Derives the base const name for a transform.
+ * viewName="detail", fieldPath="students.attendance"
+ * → "_detailStudentsAttendance"
+ */
+function transformBaseName(viewName: string, fieldPath: string): string {
+  const pathPascal = fieldPath
+    .split(".")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join("");
+  return `_${viewName}${pathPascal}`;
+}
+
+function generateTransformDecl(
+  viewName: string,
+  fieldPath: string,
+  transform: TransformValue,
+): string {
+  const base = transformBaseName(viewName, fieldPath);
+  if (isStaticMap(transform)) {
+    return `const ${base}Map = ${JSON.stringify(transform)} as const;`;
+  }
+  return `const ${base}Transform = ${transform.toString()};`;
+}
 
 function scalarToTs(field: ReadonlyDeep<DMMF.Field>): string {
   switch (field.type) {
@@ -27,40 +56,56 @@ function scalarToTs(field: ReadonlyDeep<DMMF.Field>): string {
   }
 }
 
-function resolveDtoType(
-  selectVal: unknown,
-  dmmfField: ReadonlyDeep<DMMF.Field> | undefined,
-  models: ReadonlyDeep<DMMF.Model[]>,
-): string {
-  if (!dmmfField) return "unknown";
-
-  if (selectVal === true) {
-    const base = scalarToTs(dmmfField);
-    const nullable = !dmmfField.isRequired ? " | null" : "";
-    return dmmfField.isList ? `Array<${base}>${nullable}` : `${base}${nullable}`;
-  }
-
-  if (typeof selectVal === "object" && selectVal !== null && "select" in selectVal) {
-    const nestedSelect = (selectVal as { select: Record<string, unknown> }).select;
-    const relatedModel = models.find((m) => m.name === dmmfField.type);
-    if (!relatedModel) return "unknown";
-    const shape = buildDtoShape(nestedSelect, relatedModel, models);
-    const nullable = !dmmfField.isRequired ? " | null" : "";
-    return dmmfField.isList ? `Array<${shape}>${nullable}` : `${shape}${nullable}`;
-  }
-
-  return "unknown";
-}
-
 function buildDtoShape(
   select: Record<string, unknown>,
   model: ReadonlyDeep<DMMF.Model>,
   models: ReadonlyDeep<DMMF.Model[]>,
+  viewName: string,
+  transforms: Record<string, TransformValue>,
+  pathPrefix: string,
 ): string {
   const fields = Object.entries(select).map(([key, val]) => {
+    const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
     const dmmfField = model.fields.find((f) => f.name === key);
-    const type = resolveDtoType(val, dmmfField, models);
-    return `${key}: ${type}`;
+    const transform = transforms[currentPath];
+
+    if (val === true) {
+      if (transform) {
+        const base = transformBaseName(viewName, currentPath);
+        const nullable = dmmfField && !dmmfField.isRequired ? " | null" : "";
+        if (isStaticMap(transform)) {
+          const union = Object.values(transform)
+            .map((v) => JSON.stringify(v))
+            .join(" | ");
+          return `${key}: ${union}${nullable}`;
+        }
+        return `${key}: ReturnType<typeof ${base}Transform>${nullable}`;
+      }
+      if (!dmmfField) return `${key}: unknown`;
+      const base = scalarToTs(dmmfField);
+      const nullable = !dmmfField.isRequired ? " | null" : "";
+      return `${key}: ${dmmfField.isList ? `Array<${base}>` : base}${nullable}`;
+    }
+
+    if (typeof val === "object" && val !== null && "select" in val) {
+      const nestedSelect = (val as { select: Record<string, unknown> }).select;
+      const relatedModel = models.find((m) => m.name === dmmfField?.type);
+      if (!relatedModel || !dmmfField) return `${key}: unknown`;
+      const shape = buildDtoShape(
+        nestedSelect,
+        relatedModel,
+        models,
+        viewName,
+        transforms,
+        currentPath,
+      );
+      const nullable = !dmmfField.isRequired ? " | null" : "";
+      return dmmfField.isList
+        ? `${key}: Array<${shape}>${nullable}`
+        : `${key}: ${shape}${nullable}`;
+    }
+
+    return `${key}: unknown`;
   });
   return `{ ${fields.join("; ")} }`;
 }
@@ -85,10 +130,16 @@ function buildMapperBody(
   select: Record<string, unknown>,
   model: ReadonlyDeep<DMMF.Model>,
   models: ReadonlyDeep<DMMF.Model[]>,
+  viewName: string,
+  transforms: Record<string, TransformValue>,
   varName: string,
+  pathPrefix: string,
 ): string {
   const fields = Object.entries(select).map(([key, val]) => {
+    const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
     const dmmfField = model.fields.find((f) => f.name === key);
+    const transform = transforms[currentPath];
+
     if (
       typeof val === "object" &&
       val !== null &&
@@ -102,11 +153,23 @@ function buildMapperBody(
           nestedSelect,
           relatedModel,
           models,
+          viewName,
+          transforms,
           "item",
+          currentPath,
         );
         return `${key}: ${varName}.${key}.map((item) => (${innerBody}))`;
       }
     }
+
+    if (transform) {
+      const base = transformBaseName(viewName, currentPath);
+      if (isStaticMap(transform)) {
+        return `${key}: ${base}Map[${varName}.${key} as keyof typeof ${base}Map]`;
+      }
+      return `${key}: ${base}Transform(${varName}.${key})`;
+    }
+
     return `${key}: ${varName}.${key}`;
   });
   return `{ ${fields.join(", ")} }`;
@@ -165,31 +228,49 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
     modelViews: ViewsSpec[string],
     dmmfModel: ReadonlyDeep<DMMF.Model>,
   ) {
-    const blocks: string[] = [
-      `import type { Prisma } from "@prisma/client";`,
-      "",
-    ];
+    const blocks: string[] = [`import type { Prisma } from "@prisma/client";`, ""];
+
+    // Emit transform consts (grouped before all view blocks)
+    const transformDecls: string[] = [];
+    for (const [viewName, viewSpec] of Object.entries(modelViews)) {
+      if (viewSpec.transforms) {
+        for (const [fieldPath, transform] of Object.entries(viewSpec.transforms)) {
+          transformDecls.push(generateTransformDecl(viewName, fieldPath, transform));
+        }
+      }
+    }
+    if (transformDecls.length > 0) {
+      blocks.push(...transformDecls, "");
+    }
 
     for (const [viewName, viewSpec] of Object.entries(modelViews)) {
-      const viewCapitalized = viewName.charAt(0).toUpperCase() + viewName.slice(1);
+      const viewCapitalized =
+        viewName.charAt(0).toUpperCase() + viewName.slice(1);
       const selectConstName = `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}${viewCapitalized}Select`;
       const viewTypeName = `${modelName}${viewCapitalized}View`;
       const dtoTypeName = `${modelName}${viewCapitalized}Dto`;
       const mapperName = `to${modelName}${viewCapitalized}Dto`;
 
+      const transforms = viewSpec.transforms ?? {};
       const serializedSelect = serializeSelectValue(viewSpec.select, 0);
 
       const dtoShape = buildDtoShape(
         viewSpec.select as Record<string, unknown>,
         dmmfModel,
         this._models,
+        viewName,
+        transforms,
+        "",
       );
 
       const mapperBody = buildMapperBody(
         viewSpec.select as Record<string, unknown>,
         dmmfModel,
         this._models,
+        viewName,
+        transforms,
         "v",
+        "",
       );
 
       blocks.push(

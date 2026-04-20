@@ -6,4 +6,7 @@ export type {
   ViewsSpec,
   ViewSpec,
   ViewSpecSelect,
+  TransformFn,
+  TransformStaticMap,
+  TransformValue,
 } from "./types";
