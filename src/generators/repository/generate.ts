@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { generateBaseRepository } from "./generateBaseRepository";
 import { RepositoryTransformer } from "./transformer";
+import { loadSpec } from "../../spec/loader";
 
 export async function generate(options: GeneratorOptions) {
   try {
@@ -41,6 +42,15 @@ export async function generate(options: GeneratorOptions) {
       outputPath: parsedPath,
       modelImportPath: relativeModelPath,
     });
+
+    const specPath = options.generator.config.spec as string | undefined;
+    if (specPath) {
+      const spec = await loadSpec({
+        specPath,
+        schemaPath: options.schemaPath,
+      });
+      transformer.setSpec({ spec });
+    }
 
     await transformer.transform();
   } catch (e) {

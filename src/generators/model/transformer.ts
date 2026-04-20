@@ -6,11 +6,13 @@ import { parseFieldDocumentation } from "./lib/json/parseFieldDocumentation";
 import { parseFieldDtoAnnotation } from "./lib/dto/parseFieldDtoAnnotation";
 import { parseModelDtoProfiles } from "./lib/dto/parseModelDtoProfiles";
 import type { DtoProfile } from "./lib/dto/types";
+import type { ViewsSpec } from "../../spec/types";
 
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
   private _additionalTypePath: string = "../../@additionalType/index";
+  private _spec: ViewsSpec | null = null;
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
     this._models = args.models;
@@ -22,6 +24,10 @@ export default class Transformer {
 
   setAdditionalTypePath(args: { path: string }) {
     this._additionalTypePath = args.path;
+  }
+
+  setSpec(args: { spec: ViewsSpec | null }) {
+    this._spec = args.spec;
   }
 
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
@@ -1051,7 +1057,7 @@ export default class Transformer {
         case "BigInt":
           return "bigint";
         case "Bytes":
-          return "ArrayBuffer";
+          return "Uint8Array";
         case args.field.type:
           if (args.field.relationName) {
             return `${args.field.type}WithIncludes`;
