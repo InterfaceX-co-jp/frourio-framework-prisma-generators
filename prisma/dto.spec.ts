@@ -2,9 +2,7 @@ import { defineViews } from "frourio-framework-prisma-generators/spec";
 
 export default defineViews({
   User: {
-    /**
-     * Public profile view — safe to return from APIs.
-     */
+    /** Public profile view — safe to return from APIs. */
     profile: {
       select: {
         id: true,
@@ -17,9 +15,7 @@ export default defineViews({
       },
     },
 
-    /**
-     * Compact representation used in list endpoints.
-     */
+    /** Compact representation used in list endpoints. */
     listItem: {
       select: {
         id: true,
@@ -30,9 +26,7 @@ export default defineViews({
   },
 
   Post: {
-    /**
-     * Detail view for the full post page.
-     */
+    /** Detail view for the full post page. */
     detail: {
       select: {
         id: true,
@@ -42,11 +36,11 @@ export default defineViews({
         createdAt: true,
         author: { select: { id: true, name: true } },
       },
+      // Phase 2: static map sugar — published bool already handled by type,
+      // but demonstrates the pattern with a hypothetical status field.
     },
 
-    /**
-     * Compact row for admin list.
-     */
+    /** Compact row for admin list. */
     adminListItem: {
       select: {
         id: true,

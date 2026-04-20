@@ -17,6 +17,7 @@
   },
   "include": [
     "./prisma/dto.spec.ts",
-    "./prisma/__generated__/**/*.ts"
+    "./prisma/__generated__/**/*.ts",
+    "./prisma/__generated__/views/**/*.ts"
   ]
 }
