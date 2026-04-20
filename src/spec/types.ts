@@ -20,6 +20,14 @@ export type TransformStaticMap = Record<string, string>;
 
 export type TransformValue = TransformFn | TransformStaticMap;
 
+/** Computed field: adds a new property derived from the full row. */
+export type ComputedFieldDefinition = {
+  /** TypeScript type of the computed value (e.g. `"string"`, `"number"`). */
+  type: string;
+  /** Function that derives the value from the raw DB row. */
+  from: (v: any) => unknown;
+};
+
 export type ViewSpec = {
   select: ViewSpecSelect;
   /**
@@ -28,6 +36,11 @@ export type ViewSpec = {
    * element of the `students` array.
    */
   transforms?: Record<string, TransformValue>;
+  /**
+   * Computed fields added to the DTO (not present in select).
+   * Each entry receives the full row and returns a derived value.
+   */
+  computed?: Record<string, ComputedFieldDefinition>;
 };
 
 export type ModelViewsSpec = {

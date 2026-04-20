@@ -36,8 +36,13 @@ export default defineViews({
         createdAt: true,
         author: { select: { id: true, name: true } },
       },
-      // Phase 2: static map sugar — published bool already handled by type,
-      // but demonstrates the pattern with a hypothetical status field.
+      // Phase 3: computed fields derived from the raw row.
+      computed: {
+        summary: {
+          type: "string",
+          from: (v: any) => `${v.title} (${v.published ? "公開" : "非公開"})`,
+        },
+      },
     },
 
     /** Compact row for admin list. */

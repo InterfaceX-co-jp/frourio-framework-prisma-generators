@@ -508,3 +508,129 @@ describe("ViewsTransformer — Phase 2 transforms", () => {
     expect(content).toContain("_listItemStatusMap");
   });
 });
+
+// ─── Phase 3: computed ───────────────────────────────────────────────────────
+
+describe("ViewsTransformer — Phase 3 computed", () => {
+  beforeEach(() => {
+    mockedWriteFileSafely.mockClear();
+  });
+
+  it("emits computed const before view blocks", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, date: true },
+            computed: {
+              label: { type: "string", from: (v) => `lesson-${v.date}` },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailLabelComputed");
+    expect(content).toContain("lesson-");
+  });
+
+  it("DTO type includes computed field with declared type", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true },
+            computed: {
+              startDateTime: { type: "string", from: (v) => `${v.date}T00:00:00+09:00` },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("startDateTime: string");
+  });
+
+  it("mapper calls computed function with full row", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true },
+            computed: {
+              startDateTime: { type: "string", from: (v) => `${v.date}T00:00:00+09:00` },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailStartDateTimeComputed(v)");
+  });
+
+  it("select fields and computed fields coexist in DTO and mapper", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true, date: true },
+            computed: {
+              label: { type: "string", from: (v) => `lesson-${v.date}` },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("id: number");
+    expect(content).toContain("date: string");
+    expect(content).toContain("label: string");
+    expect(content).toContain("v.id");
+    expect(content).toContain("v.date");
+    expect(content).toContain("_detailLabelComputed(v)");
+  });
+
+  it("two views get distinct computed consts", async () => {
+    const vt = new ViewsTransformer({
+      models: [lessonModel, lessonStudentModel],
+      spec: {
+        Lesson: {
+          detail: {
+            select: { id: true },
+            computed: {
+              label: { type: "string", from: (v) => `detail-${v.id}` },
+            },
+          },
+          listItem: {
+            select: { id: true },
+            computed: {
+              label: { type: "string", from: (v) => `list-${v.id}` },
+            },
+          },
+        },
+      },
+      outputPath: "/tmp/views",
+    });
+    await vt.transform();
+
+    const content = findContent("Lesson.views.ts");
+    expect(content).toContain("_detailLabelComputed");
+    expect(content).toContain("_listItemLabelComputed");
+  });
+});

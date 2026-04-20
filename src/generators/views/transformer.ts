@@ -1,7 +1,7 @@
 import type { DMMF } from "@prisma/generator-helper";
 import type { ReadonlyDeep } from "../utils/types";
 import { writeFileSafely } from "../utils/writeFileSafely";
-import type { ViewsSpec, TransformValue, TransformStaticMap } from "../../spec/types";
+import type { ViewsSpec, TransformValue, TransformStaticMap, ComputedFieldDefinition } from "../../spec/types";
 import path from "path";
 
 function isStaticMap(v: TransformValue): v is TransformStaticMap {
@@ -19,6 +19,20 @@ function transformBaseName(viewName: string, fieldPath: string): string {
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join("");
   return `_${viewName}${pathPascal}`;
+}
+
+function computedBaseName(viewName: string, fieldName: string): string {
+  const namePascal = fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+  return `_${viewName}${namePascal}`;
+}
+
+function generateComputedDecl(
+  viewName: string,
+  fieldName: string,
+  def: ComputedFieldDefinition,
+): string {
+  const base = computedBaseName(viewName, fieldName);
+  return `const ${base}Computed = ${def.from.toString()};`;
 }
 
 function generateTransformDecl(
@@ -63,6 +77,7 @@ function buildDtoShape(
   viewName: string,
   transforms: Record<string, TransformValue>,
   pathPrefix: string,
+  computed?: Record<string, ComputedFieldDefinition>,
 ): string {
   const fields = Object.entries(select).map(([key, val]) => {
     const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
@@ -107,6 +122,13 @@ function buildDtoShape(
 
     return `${key}: unknown`;
   });
+
+  if (!pathPrefix && computed) {
+    for (const [key, def] of Object.entries(computed)) {
+      fields.push(`${key}: ${def.type}`);
+    }
+  }
+
   return `{ ${fields.join("; ")} }`;
 }
 
@@ -134,6 +156,7 @@ function buildMapperBody(
   transforms: Record<string, TransformValue>,
   varName: string,
   pathPrefix: string,
+  computed?: Record<string, ComputedFieldDefinition>,
 ): string {
   const fields = Object.entries(select).map(([key, val]) => {
     const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
@@ -172,6 +195,14 @@ function buildMapperBody(
 
     return `${key}: ${varName}.${key}`;
   });
+
+  if (!pathPrefix && computed) {
+    for (const [key] of Object.entries(computed)) {
+      const base = computedBaseName(viewName, key);
+      fields.push(`${key}: ${base}Computed(${varName})`);
+    }
+  }
+
   return `{ ${fields.join(", ")} }`;
 }
 
@@ -230,17 +261,22 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
   ) {
     const blocks: string[] = [`import type { Prisma } from "@prisma/client";`, ""];
 
-    // Emit transform consts (grouped before all view blocks)
-    const transformDecls: string[] = [];
+    // Emit transform and computed consts (grouped before all view blocks)
+    const declLines: string[] = [];
     for (const [viewName, viewSpec] of Object.entries(modelViews)) {
       if (viewSpec.transforms) {
         for (const [fieldPath, transform] of Object.entries(viewSpec.transforms)) {
-          transformDecls.push(generateTransformDecl(viewName, fieldPath, transform));
+          declLines.push(generateTransformDecl(viewName, fieldPath, transform));
+        }
+      }
+      if (viewSpec.computed) {
+        for (const [fieldName, def] of Object.entries(viewSpec.computed)) {
+          declLines.push(generateComputedDecl(viewName, fieldName, def));
         }
       }
     }
-    if (transformDecls.length > 0) {
-      blocks.push(...transformDecls, "");
+    if (declLines.length > 0) {
+      blocks.push(...declLines, "");
     }
 
     for (const [viewName, viewSpec] of Object.entries(modelViews)) {
@@ -252,6 +288,7 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
       const mapperName = `to${modelName}${viewCapitalized}Dto`;
 
       const transforms = viewSpec.transforms ?? {};
+      const computed = viewSpec.computed;
       const serializedSelect = serializeSelectValue(viewSpec.select, 0);
 
       const dtoShape = buildDtoShape(
@@ -261,6 +298,7 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
         viewName,
         transforms,
         "",
+        computed,
       );
 
       const mapperBody = buildMapperBody(
@@ -271,6 +309,7 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
         transforms,
         "v",
         "",
+        computed,
       );
 
       blocks.push(
