@@ -14,6 +14,7 @@ A Prisma generator that produces immutable, type-safe TypeScript model classes f
 - Auto-generated relation types (`WithIncludes`)
 - Automatic foreign key field exclusion when a relation field exists
 - **Repository generation** (beta) — auto-generated repository classes with `findBy`, `paginate`, and CRUD
+- **View-driven DTO generation** — declare `select`, `transforms`, `computed`, and `raw` views in a single spec file; the generator emits per-view types, classes, and repository methods
 
 ## Requirements
 
@@ -34,6 +35,7 @@ generator frourio_framework_prisma_model_generator {
     provider = "frourio-framework-prisma-model-generator"
     output   = "__generated__/models"
     additionalTypePath = "./@additionalType/index" // Required when using @json annotation
+    spec               = "./dto.config.ts"         // Optional — enables view-driven DTO generation
 }
 ```
 
@@ -42,6 +44,7 @@ generator frourio_framework_prisma_model_generator {
 | `provider` | Generator name (fixed value) |
 | `output` | Output directory (relative to prisma schema) |
 | `additionalTypePath` | Import path for custom types used with `@json` annotation |
+| `spec` | Path to view-driven DTO spec file (see [View-Driven DTO Generation](#view-driven-dto-generation)) |
 
 ### Repository Generator (Beta)
 
@@ -52,6 +55,7 @@ generator repository {
     provider  = "frourio-framework-prisma-repository-generator"
     output    = "__generated__/repository"
     modelPath = "__generated__/model"    // Path to model generator output
+    spec      = "./dto.config.ts"        // Optional — enables view repository methods
 }
 ```
 
@@ -60,6 +64,7 @@ generator repository {
 | `provider` | Generator name (fixed value) |
 | `output` | Output directory (relative to prisma schema) |
 | `modelPath` | Path to model generator output (for import resolution) |
+| `spec` | Path to view-driven DTO spec file. Use the same spec file as the model generator to enable `findById{View}` / `findMany{View}` / `paginate{View}` methods |
 
 ---
 
@@ -93,6 +98,14 @@ Working examples are available in the [`examples/`](examples/) directory:
 | [`repository/JsonField.repository.ts`](examples/repository/JsonField.repository.ts) | Simple repository usage without the generator |
 
 > **Note:** Repository generation is a beta feature. Add a separate `repository` generator block to enable it.
+
+### View-Driven DTO
+
+| File | Description |
+|------|-------------|
+| [`views/01-direct-view.ts`](examples/views/01-direct-view.ts) | Direct use of generated view select + class + DTO |
+| [`views/02-repository-views.ts`](examples/views/02-repository-views.ts) | `findById{View}` / `findMany{View}` / `paginate{View}` repository methods |
+| [`views/03-computed-fields.ts`](examples/views/03-computed-fields.ts) | Computed fields added to the DTO via `computed: { from }` |
 
 ---
 
@@ -167,6 +180,209 @@ export class UserRepository extends GeneratedUserRepository {
     return this.findMany({ where: { active: true } });
   }
 }
+```
+
+---
+
+## View-Driven DTO Generation
+
+Declare view shapes, transforms, and computed fields in a single spec file. The model generator emits per-view types and a `View` class; the repository generator adds `findById{View}` / `findMany{View}` / `paginate{View}` methods. Base model configuration (`hide`, `nested`, `profiles`, etc.) can also be expressed in the spec as an alternative to `///` schema annotations.
+
+### Enable
+
+Add `spec` to both generator blocks (see [Setup](#setup)):
+
+```prisma
+generator frourio_framework_prisma_model_generator {
+    provider = "frourio-framework-prisma-model-generator"
+    output   = "__generated__/model"
+    spec     = "./dto.config.ts"
+}
+
+generator repository {
+    provider  = "frourio-framework-prisma-repository-generator"
+    output    = "__generated__/repository"
+    modelPath = "__generated__/model"
+    spec      = "./dto.config.ts"
+}
+```
+
+### Spec file (`dto.config.ts`)
+
+The spec default-exports `registerModelDtos([...])`. Each entry is a `defineModelDto(modelName, { base?, views? })`.
+
+```ts
+import {
+  registerModelDtos,
+  defineModelDto,
+} from "frourio-framework-prisma-generators/spec";
+
+export default registerModelDtos([
+  defineModelDto("User", {
+    // base: configures the default DTO (alternative to /// annotations)
+    base: {
+      fields: {
+        password: { hide: true },   // === @dto(hidden: true)
+        posts:    { nested: true }, // === @dto(nested: true)
+      },
+      profiles: [
+        { name: "Public", pick: ["id", "email", "name"] },
+        { name: "Admin",  omit: ["password"] },
+      ],
+    },
+    // views: per-view select + mapping
+    views: {
+      listItem: {
+        select: { id: true, email: true, name: true },
+      },
+      profile: {
+        select: {
+          id: true, email: true, name: true,
+          posts: { select: { id: true, title: true, published: true } },
+        },
+      },
+    },
+  }),
+]);
+```
+
+Two orthogonal blocks per model:
+
+- **`base`** — configures the full-model DTO (`{Model}Model` + `{Model}ModelDto`). Equivalent to `///` schema annotations.
+  - `fields[name].hide` — exclude from DTO (same as `@dto(hidden: true)`)
+  - `fields[name].nested` — expand relation as nested DTO (same as `@dto(nested: true)`)
+  - `fields[name].map` — static enum→label map
+  - `fields[name].jsonType` — custom TS type for `Json` fields (same as `@json(type: [...])`)
+  - `profiles` — same as `@dto.profile` (array of `{ name, pick?, omit? }`)
+- **`views`** — per-view query shape + mapping. Each key becomes a generated view with its own `Select`, `Row`, `Dto`, and `View` class.
+
+### View types
+
+Generated per view (for `defineModelDto("Post", { views: { detail: {...} } })`):
+
+- `postDetailSelect` — typed `Prisma.PostSelect` const for `prisma.post.findMany({ select })`
+- `PostDetailRow` — raw row shape returned by Prisma
+- `PostDetailDto` — flattened DTO type (after transforms / computed applied)
+- `PostDetailView` — class with `static fromPrismaValue(row)` and `toDto()`
+
+Output path: `__generated__/views/{Model}.views.ts`.
+
+#### Select view
+
+```ts
+views: {
+  listItem: {
+    select: { id: true, email: true, name: true },
+  },
+}
+```
+
+#### Transforms — function
+
+```ts
+adminListItem: {
+  select: { id: true, title: true, published: true },
+  transforms: {
+    published: (v) => (v ? "公開" : "非公開"),  // v inferred as boolean
+  },
+}
+```
+
+`transforms` rewrites specific fields. The value can be a function (receives the raw DB value) or a static map. Keys support dot-paths (`"students.attendance"`) to target fields inside nested relations.
+
+#### Transforms — static map
+
+```ts
+withStatus: {
+  select: { id: true, status: true },
+  transforms: {
+    status: {
+      DRAFT: "下書き",
+      PUBLISHED: "公開",
+      ARCHIVED: "アーカイブ",
+    },
+  },
+}
+```
+
+Sugar for enum→label mapping.
+
+#### Computed fields
+
+```ts
+detail: {
+  select: { id: true, title: true, published: true },
+  computed: {
+    summary: {
+      from: (v) => `${v.title} (${v.published ? "公開" : "非公開"})`,
+    },
+  },
+}
+```
+
+Adds a property not present in `select`. Return type is inferred from `from`. The function runs inside the view class's `toDto()`.
+
+#### Raw views
+
+```ts
+stats: {
+  raw: (prisma, args: { authorId: number }) =>
+    prisma.post.aggregate({
+      where: { authorId: args.authorId },
+      _count: { id: true },
+      _sum:   { viewCount: true },
+    }),
+  map: (row) => ({
+    totalPosts: row._count.id,
+    totalViews: row._sum.viewCount ?? 0,
+  }),
+}
+```
+
+Bypasses select-based generation. `prisma` is typed as `PrismaClient`; `args` is explicit; `row` is inferred from `raw`'s return. The DTO type comes from `map`'s return.
+
+### Usage — direct
+
+```ts
+import {
+  userProfileSelect,
+  UserProfileView,
+  type UserProfileDto,
+} from "./__generated__/views/User.views";
+
+const row = await prisma.user.findUnique({
+  where: { id: 1 },
+  select: userProfileSelect,
+});
+const dto: UserProfileDto | null = row
+  ? UserProfileView.fromPrismaValue(row).toDto()
+  : null;
+```
+
+### Usage — repository methods
+
+When both generators share the same `spec`, each non-raw view produces three repository methods:
+
+| Method | Returns |
+|--------|---------|
+| `findById{View}(id)` | `{Model}{View}Dto \| null` |
+| `findMany{View}(args?)` | `{Model}{View}Dto[]` |
+| `paginate{View}(args?)` | `{ rows, page, perPage, total, totalPages }` of `{Model}{View}Dto` |
+
+```ts
+const userRepo = new UserRepository(prisma.user);
+
+const profile = await userRepo.findByIdProfile(1);
+//    ^? UserProfileDto | null
+
+const items = await userRepo.findManyListItem();
+//    ^? UserListItemDto[]
+
+const paged = await userRepo.paginateProfile({
+  page: 1,
+  perPage: 20,
+  orderBy: { field: "id", direction: "desc" },
+});
 ```
 
 ---
@@ -792,6 +1008,7 @@ Prisma schema からイミュータブルな TypeScript モデルクラスを自
 - リレーションフィールドの自動型生成（`WithIncludes` 型）
 - 外部キーフィールドの自動除外（リレーションフィールドが存在する場合）
 - **リポジトリ生成**（ベータ） — `findBy`、`paginate`、CRUD 付きリポジトリクラスを自動生成
+- **View 駆動 DTO 生成** — spec ファイルに `select`・`transforms`・`computed`・`raw` view を宣言すると、view ごとの型・クラス・リポジトリメソッドが自動生成される
 
 ## 要件
 
@@ -812,6 +1029,7 @@ generator frourio_framework_prisma_model_generator {
     provider = "frourio-framework-prisma-model-generator"
     output   = "__generated__/models"
     additionalTypePath = "./@additionalType/index" // Json 型フィールドに型を指定する場合に必要
+    spec               = "./dto.config.ts"         // 任意 — View 駆動 DTO 生成を有効化
 }
 ```
 
@@ -820,6 +1038,7 @@ generator frourio_framework_prisma_model_generator {
 | `provider` | ジェネレーター名（固定値） |
 | `output` | 生成先ディレクトリ（Prisma schema からの相対パス） |
 | `additionalTypePath` | `@json` アノテーションで使用する型のインポートパス |
+| `spec` | View 駆動 DTO の spec ファイルパス（[View 駆動 DTO 生成](#view-駆動-dto-生成)参照） |
 
 ### リポジトリジェネレーター（ベータ）
 
@@ -830,6 +1049,7 @@ generator repository {
     provider  = "frourio-framework-prisma-repository-generator"
     output    = "__generated__/repository"
     modelPath = "__generated__/model"    // モデルジェネレーターの出力パス
+    spec      = "./dto.config.ts"        // 任意 — view のリポジトリメソッドを有効化
 }
 ```
 
@@ -838,6 +1058,7 @@ generator repository {
 | `provider` | ジェネレーター名（固定値） |
 | `output` | 生成先ディレクトリ（Prisma schema からの相対パス） |
 | `modelPath` | モデルジェネレーターの出力パス（import 解決用） |
+| `spec` | View 駆動 DTO の spec ファイルパス。モデルジェネレーターと同じ spec を指定すると `findById{View}` / `findMany{View}` / `paginate{View}` メソッドが生成される |
 
 ---
 
@@ -871,6 +1092,14 @@ generator repository {
 | [`repository/JsonField.repository.ts`](examples/repository/JsonField.repository.ts) | ジェネレーターなしのシンプルなリポジトリ利用 |
 
 > **注意:** リポジトリ生成はベータ機能です。別の `repository` ジェネレーターブロックを追加して有効化してください。
+
+### View 駆動 DTO
+
+| ファイル | 説明 |
+|---------|------|
+| [`views/01-direct-view.ts`](examples/views/01-direct-view.ts) | 生成された view select + クラス + DTO を直接使う |
+| [`views/02-repository-views.ts`](examples/views/02-repository-views.ts) | `findById{View}` / `findMany{View}` / `paginate{View}` リポジトリメソッド |
+| [`views/03-computed-fields.ts`](examples/views/03-computed-fields.ts) | `computed: { from }` で DTO に計算フィールドを追加 |
 
 ---
 
@@ -945,6 +1174,209 @@ export class UserRepository extends GeneratedUserRepository {
     return this.findMany({ where: { active: true } });
   }
 }
+```
+
+---
+
+## View 駆動 DTO 生成
+
+view の形状・transform・計算フィールドを単一 spec ファイルに宣言します。モデルジェネレーターが view ごとの型と `View` クラスを生成し、リポジトリジェネレーターが `findById{View}` / `findMany{View}` / `paginate{View}` メソッドを追加します。モデル全体のベース設定（`hide`・`nested`・`profiles` など）も spec で表現でき、`///` スキーマアノテーションの代替になります。
+
+### 有効化
+
+両方のジェネレーターブロックに `spec` を追加します（[セットアップ](#セットアップ)参照）:
+
+```prisma
+generator frourio_framework_prisma_model_generator {
+    provider = "frourio-framework-prisma-model-generator"
+    output   = "__generated__/model"
+    spec     = "./dto.config.ts"
+}
+
+generator repository {
+    provider  = "frourio-framework-prisma-repository-generator"
+    output    = "__generated__/repository"
+    modelPath = "__generated__/model"
+    spec      = "./dto.config.ts"
+}
+```
+
+### spec ファイル (`dto.config.ts`)
+
+`registerModelDtos([...])` をデフォルトエクスポートします。各要素は `defineModelDto(modelName, { base?, views? })` です。
+
+```ts
+import {
+  registerModelDtos,
+  defineModelDto,
+} from "frourio-framework-prisma-generators/spec";
+
+export default registerModelDtos([
+  defineModelDto("User", {
+    // base: デフォルト DTO の設定（/// アノテーションの代替）
+    base: {
+      fields: {
+        password: { hide: true },   // === @dto(hidden: true)
+        posts:    { nested: true }, // === @dto(nested: true)
+      },
+      profiles: [
+        { name: "Public", pick: ["id", "email", "name"] },
+        { name: "Admin",  omit: ["password"] },
+      ],
+    },
+    // views: view ごとの select + マッピング
+    views: {
+      listItem: {
+        select: { id: true, email: true, name: true },
+      },
+      profile: {
+        select: {
+          id: true, email: true, name: true,
+          posts: { select: { id: true, title: true, published: true } },
+        },
+      },
+    },
+  }),
+]);
+```
+
+モデルごとに独立した 2 ブロック:
+
+- **`base`** — フルモデル DTO（`{Model}Model` + `{Model}ModelDto`）の設定。`///` スキーマアノテーション と等価。
+  - `fields[name].hide` — DTO から除外（`@dto(hidden: true)` と同じ）
+  - `fields[name].nested` — リレーションをネスト DTO として展開（`@dto(nested: true)` と同じ）
+  - `fields[name].map` — enum→label の静的マップ
+  - `fields[name].jsonType` — `Json` フィールドのカスタム TS 型（`@json(type: [...])` と同じ）
+  - `profiles` — `@dto.profile` と同じ（`{ name, pick?, omit? }` の配列）
+- **`views`** — view ごとのクエリ形状 + マッピング。各キーが `Select`・`Row`・`Dto`・`View` クラスを持つ view として生成される。
+
+### View の種別
+
+view ごとの生成物（例: `defineModelDto("Post", { views: { detail: {...} } })`）:
+
+- `postDetailSelect` — `prisma.post.findMany({ select })` で使う型付き `Prisma.PostSelect` 定数
+- `PostDetailRow` — Prisma が返す生のロウ型
+- `PostDetailDto` — transforms / computed 適用後のフラット DTO 型
+- `PostDetailView` — `static fromPrismaValue(row)` と `toDto()` を持つクラス
+
+出力先: `__generated__/views/{Model}.views.ts`
+
+#### Select view
+
+```ts
+views: {
+  listItem: {
+    select: { id: true, email: true, name: true },
+  },
+}
+```
+
+#### Transforms — 関数
+
+```ts
+adminListItem: {
+  select: { id: true, title: true, published: true },
+  transforms: {
+    published: (v) => (v ? "公開" : "非公開"),  // v は boolean と推論
+  },
+}
+```
+
+`transforms` は特定フィールドを書き換えます。値は関数（DB の生値を受け取る）または静的マップ。キーはドットパス（`"students.attendance"`）でネストしたリレーション内のフィールドも対象にできます。
+
+#### Transforms — 静的マップ
+
+```ts
+withStatus: {
+  select: { id: true, status: true },
+  transforms: {
+    status: {
+      DRAFT: "下書き",
+      PUBLISHED: "公開",
+      ARCHIVED: "アーカイブ",
+    },
+  },
+}
+```
+
+enum→label 変換のシュガー。
+
+#### 計算フィールド (computed)
+
+```ts
+detail: {
+  select: { id: true, title: true, published: true },
+  computed: {
+    summary: {
+      from: (v) => `${v.title} (${v.published ? "公開" : "非公開"})`,
+    },
+  },
+}
+```
+
+`select` に存在しないプロパティを追加します。戻り値型は `from` から推論。関数は view クラスの `toDto()` 内で実行されます。
+
+#### Raw view
+
+```ts
+stats: {
+  raw: (prisma, args: { authorId: number }) =>
+    prisma.post.aggregate({
+      where: { authorId: args.authorId },
+      _count: { id: true },
+      _sum:   { viewCount: true },
+    }),
+  map: (row) => ({
+    totalPosts: row._count.id,
+    totalViews: row._sum.viewCount ?? 0,
+  }),
+}
+```
+
+select ベースの生成をバイパスします。`prisma` は `PrismaClient` 型付き、`args` は明示注釈、`row` は `raw` の戻り値から推論。DTO 型は `map` の戻り値から決まります。
+
+### 使い方 — 直接利用
+
+```ts
+import {
+  userProfileSelect,
+  UserProfileView,
+  type UserProfileDto,
+} from "./__generated__/views/User.views";
+
+const row = await prisma.user.findUnique({
+  where: { id: 1 },
+  select: userProfileSelect,
+});
+const dto: UserProfileDto | null = row
+  ? UserProfileView.fromPrismaValue(row).toDto()
+  : null;
+```
+
+### 使い方 — リポジトリメソッド
+
+両方のジェネレーターが同じ `spec` を参照すると、raw 以外の各 view に対して 3 つのリポジトリメソッドが生成されます:
+
+| メソッド | 戻り値 |
+|---------|-------|
+| `findById{View}(id)` | `{Model}{View}Dto \| null` |
+| `findMany{View}(args?)` | `{Model}{View}Dto[]` |
+| `paginate{View}(args?)` | `{Model}{View}Dto` のページ結果 `{ rows, page, perPage, total, totalPages }` |
+
+```ts
+const userRepo = new UserRepository(prisma.user);
+
+const profile = await userRepo.findByIdProfile(1);
+//    ^? UserProfileDto | null
+
+const items = await userRepo.findManyListItem();
+//    ^? UserListItemDto[]
+
+const paged = await userRepo.paginateProfile({
+  page: 1,
+  perPage: 20,
+  orderBy: { field: "id", direction: "desc" },
+});
 ```
 
 ---
