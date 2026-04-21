@@ -166,8 +166,9 @@ describe("ViewsTransformer", () => {
     await vt.transform();
 
     const content = findContent("User.views.ts");
-    expect(content).toContain("toUserListItemDto");
-    expect(content).toContain("(v: UserListItemView): UserListItemDto");
+    expect(content).toContain("export class UserListItemView");
+    expect(content).toContain("static fromPrismaValue(row: UserListItemRow): UserListItemView");
+    expect(content).toContain("toDto(): UserListItemDto");
     expect(content).toContain("v.id");
     expect(content).toContain("v.email");
   });
@@ -524,7 +525,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
           detail: {
             select: { id: true, date: true },
             computed: {
-              label: { type: "string", from: (v) => `lesson-${v.date}` },
+              label: { from: (v: { date: string }) => `lesson-${v.date}` },
             },
           },
         },
@@ -538,7 +539,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
     expect(content).toContain("lesson-");
   });
 
-  it("DTO type includes computed field with declared type", async () => {
+  it("DTO type infers computed field type from from() return", async () => {
     const vt = new ViewsTransformer({
       models: [lessonModel, lessonStudentModel],
       spec: {
@@ -546,7 +547,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
           detail: {
             select: { id: true },
             computed: {
-              startDateTime: { type: "string", from: (v) => `${v.date}T00:00:00+09:00` },
+              startDateTime: { from: (v: { date: string }) => `${v.date}T00:00:00+09:00` },
             },
           },
         },
@@ -556,7 +557,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
     await vt.transform();
 
     const content = findContent("Lesson.views.ts");
-    expect(content).toContain("startDateTime: string");
+    expect(content).toContain("startDateTime: ReturnType<typeof _detailStartDateTimeComputed>");
   });
 
   it("mapper calls computed function with full row", async () => {
@@ -567,7 +568,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
           detail: {
             select: { id: true },
             computed: {
-              startDateTime: { type: "string", from: (v) => `${v.date}T00:00:00+09:00` },
+              startDateTime: { from: (v: { date: string }) => `${v.date}T00:00:00+09:00` },
             },
           },
         },
@@ -588,7 +589,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
           detail: {
             select: { id: true, date: true },
             computed: {
-              label: { type: "string", from: (v) => `lesson-${v.date}` },
+              label: { from: (v: { date: string }) => `lesson-${v.date}` },
             },
           },
         },
@@ -600,7 +601,7 @@ describe("ViewsTransformer — Phase 3 computed", () => {
     const content = findContent("Lesson.views.ts");
     expect(content).toContain("id: number");
     expect(content).toContain("date: string");
-    expect(content).toContain("label: string");
+    expect(content).toContain("label: ReturnType<typeof _detailLabelComputed>");
     expect(content).toContain("v.id");
     expect(content).toContain("v.date");
     expect(content).toContain("_detailLabelComputed(v)");
@@ -614,13 +615,13 @@ describe("ViewsTransformer — Phase 3 computed", () => {
           detail: {
             select: { id: true },
             computed: {
-              label: { type: "string", from: (v) => `detail-${v.id}` },
+              label: { from: (v: { id: number }) => `detail-${v.id}` },
             },
           },
           listItem: {
             select: { id: true },
             computed: {
-              label: { type: "string", from: (v) => `list-${v.id}` },
+              label: { from: (v: { id: number }) => `list-${v.id}` },
             },
           },
         },

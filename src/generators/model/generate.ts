@@ -5,6 +5,7 @@ import removeDir from "../utils/removeDir";
 import fs from "fs";
 import path from "path";
 import { loadSpec } from "../../spec/loader";
+import type { LoadedSpec } from "../../spec/types";
 import { generateViews } from "../views";
 
 export async function generate(options: GeneratorOptions) {
@@ -16,7 +17,7 @@ export async function generate(options: GeneratorOptions) {
     });
 
     const specPath = options.generator.config.spec as string | undefined;
-    let spec = null;
+    let spec: LoadedSpec | null = null;
     if (specPath) {
       spec = await loadSpec({
         specPath,
@@ -59,7 +60,7 @@ export async function generate(options: GeneratorOptions) {
       const parsedPath = parseEnvValue(options.generator.output as EnvValue);
       await generateViews({
         models,
-        spec,
+        spec: spec.views,
         modelOutputPath: parsedPath,
       });
     }

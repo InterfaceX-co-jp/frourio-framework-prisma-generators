@@ -37,7 +37,8 @@ describe("loadSpec", () => {
 
     const spec = await loadSpec({ specPath: "dto.spec.ts", schemaPath });
 
-    expect(spec).toEqual({
+    expect(spec._type).toBe("LoadedSpec");
+    expect(spec.views).toEqual({
       User: {
         customer: { select: { id: true, name: true } },
       },
@@ -52,7 +53,7 @@ describe("loadSpec", () => {
 
     const spec = await loadSpec({ specPath: abs, schemaPath });
 
-    expect(spec.Store?.listItem?.select).toEqual({ id: true });
+    expect((spec.views.Store?.listItem as any)?.select).toEqual({ id: true });
   });
 
   it("throws when the spec file does not exist", async () => {
@@ -78,6 +79,62 @@ describe("loadSpec", () => {
     await expect(
       loadSpec({ specPath: "no-select.spec.ts", schemaPath }),
     ).rejects.toThrow(/must have a "select" object/);
+  });
+
+  it("loads a dto.config.ts using registerModelDtos + defineModelDto", async () => {
+    const defineModelDtoPath = path.resolve(__dirname, "../../src/spec/defineModelDto");
+    const registerModelDtosPath = path.resolve(__dirname, "../../src/spec/registerModelDtos");
+
+    writeSpec(
+      "dto.config.ts",
+      `import { defineModelDto } from "${defineModelDtoPath}";
+       import { registerModelDtos } from "${registerModelDtosPath}";
+       export default registerModelDtos([
+         defineModelDto("User", {
+           views: { customer: { select: { id: true, name: true } } },
+         }),
+       ]);`,
+    );
+
+    const spec = await loadSpec({
+      specPath: "dto.config.ts",
+      schemaPath,
+    });
+
+    expect(spec._type).toBe("LoadedSpec");
+    expect(spec.views).toEqual({
+      User: { customer: { select: { id: true, name: true } } },
+    });
+  });
+
+  it("loads base config from registerModelDtos", async () => {
+    const defineModelDtoPath = path.resolve(__dirname, "../../src/spec/defineModelDto");
+    const registerModelDtosPath = path.resolve(__dirname, "../../src/spec/registerModelDtos");
+
+    writeSpec(
+      "with-base.config.ts",
+      `import { defineModelDto } from "${defineModelDtoPath}";
+       import { registerModelDtos } from "${registerModelDtosPath}";
+       export default registerModelDtos([
+         defineModelDto("User", {
+           views: { profile: { select: { id: true } } },
+           base: {
+             fields: { password: { hide: true } },
+             profiles: [{ name: "Public", pick: ["id", "email"] }],
+           },
+         }),
+       ]);`,
+    );
+
+    const spec = await loadSpec({
+      specPath: "with-base.config.ts",
+      schemaPath,
+    });
+
+    expect(spec.base.User).toEqual({
+      fields: { password: { hide: true } },
+      profiles: [{ name: "Public", pick: ["id", "email"] }],
+    });
   });
 });
 

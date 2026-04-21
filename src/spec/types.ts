@@ -9,7 +9,7 @@
 export type ViewSpecSelect = Record<string, unknown>;
 
 /** Function transform: receives the raw DB value, returns the DTO value. */
-export type TransformFn<TIn = unknown, TOut = unknown> = (v: TIn) => TOut;
+export type TransformFn<TIn = never, TOut = unknown> = (v: TIn) => TOut;
 
 /**
  * Static map transform — sugar for simple enum→label mappings.
@@ -17,14 +17,12 @@ export type TransformFn<TIn = unknown, TOut = unknown> = (v: TIn) => TOut;
  */
 export type TransformStaticMap = Record<string, string>;
 
-export type TransformValue<TIn = unknown, TOut = unknown> =
+export type TransformValue<TIn = never, TOut = unknown> =
   | TransformFn<TIn, TOut>
   | TransformStaticMap;
 
 /** Computed field: adds a new property derived from the full row. */
-export type ComputedFieldDefinition<TRow = unknown, TResult = unknown> = {
-  /** TypeScript type of the computed value (e.g. `"string"`, `"number"`). */
-  type: string;
+export type ComputedFieldDefinition<TRow = never, TResult = unknown> = {
   /** Function that derives the value from the raw DB row. */
   from: (v: TRow) => TResult;
 };
@@ -71,4 +69,42 @@ export type ModelViewsSpec = {
 
 export type ViewsSpec = {
   [modelName: string]: ModelViewsSpec;
+};
+
+export type FieldBaseConfig = {
+  /** Exclude field from all DTOs (equivalent to `@dto.hide`). */
+  hide?: boolean;
+  /** Include nested relation as full DTO (equivalent to `@dto(nested: true)`). */
+  nested?: boolean;
+  /** Static enum→label map (equivalent to `@dto.map({...})`). */
+  map?: Record<string, string>;
+  /** JSON field TypeScript type (equivalent to `@json(type: [T])`). */
+  jsonType?: string;
+};
+
+export type ModelBaseProfileConfig = {
+  name: string;
+  pick?: string[];
+  omit?: string[];
+};
+
+export type ModelBaseConfig = {
+  fields?: Record<string, FieldBaseConfig>;
+  profiles?: ModelBaseProfileConfig[];
+};
+
+export type ModelDef<TName extends string = string> = {
+  readonly _modelName: TName;
+  readonly _views: ModelViewsSpec;
+  readonly _base?: ModelBaseConfig;
+};
+
+/**
+ * The spec object returned by `registerModels` and `loadSpec`.
+ * Carries both view definitions and base model configuration.
+ */
+export type LoadedSpec = {
+  readonly _type: "LoadedSpec";
+  readonly views: ViewsSpec;
+  readonly base: { readonly [modelName: string]: ModelBaseConfig };
 };

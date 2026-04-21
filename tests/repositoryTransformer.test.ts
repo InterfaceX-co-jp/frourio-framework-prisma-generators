@@ -422,12 +422,12 @@ describe("Repository Transformer", () => {
       const content = mockedWriteFileSafely.mock.calls[0][1] as string;
       expect(content).toContain("from '../views/User.views'");
       expect(content).toContain("userProfileSelect");
+      expect(content).toContain("UserProfileRow");
       expect(content).toContain("UserProfileView");
       expect(content).toContain("UserProfileDto");
-      expect(content).toContain("toUserProfileDto");
     });
 
-    it("findByIdProfile uses select const and mapper", async () => {
+    it("findByIdProfile uses select const and view class", async () => {
       const t = new RepositoryTransformer({
         models: [userModel],
         outputPath: "/tmp/test-repo",
@@ -438,7 +438,8 @@ describe("Repository Transformer", () => {
 
       const content = mockedWriteFileSafely.mock.calls[0][1] as string;
       expect(content).toContain("select: userProfileSelect");
-      expect(content).toContain("toUserProfileDto(");
+      expect(content).toContain("UserProfileView.fromPrismaValue(");
+      expect(content).toContain(").toDto()");
       expect(content).toContain("Promise<UserProfileDto | null>");
     });
 

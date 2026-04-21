@@ -36,7 +36,7 @@ function generateComputedDecl(
   viewTypeName: string,
 ): string {
   const base = computedBaseName(viewName, fieldName);
-  return `const ${base}Computed: (v: ${viewTypeName}) => ${def.type} = (${def.from.toString()});`;
+  return `const ${base}Computed = ((${def.from.toString()}) satisfies (v: ${viewTypeName}) => unknown);`;
 }
 
 function generateTransformDecl(
@@ -144,8 +144,9 @@ function buildDtoShape(
   }).filter((f): f is string => f !== null);
 
   if (!pathPrefix && computed) {
-    for (const [key, def] of Object.entries(computed)) {
-      fields.push(`${key}: ${def.type}`);
+    for (const [key] of Object.entries(computed)) {
+      const base = computedBaseName(viewName, key);
+      fields.push(`${key}: ReturnType<typeof ${base}Computed>`);
     }
   }
 
@@ -281,7 +282,7 @@ export class ViewsTransformer {
   private async generateSpecFile() {
     const modelEntries = this._models
       .map((m) => {
-        return `  ${m.name}?: {\n    [view: string]: {\n      select: Prisma.${m.name}Select;\n      transforms?: Record<string, ((v: any) => unknown) | Record<string, string>>;\n      computed?: Record<string, { type: string; from: (v: any) => unknown }>;\n    }\n  };`;
+        return `  ${m.name}?: {\n    [view: string]: {\n      select: Prisma.${m.name}Select;\n      transforms?: Record<string, ((v: unknown) => unknown) | Record<string, string>>;\n      computed?: Record<string, { from: (v: Prisma.${m.name}GetPayload<{ select: Prisma.${m.name}Select }>) => unknown }>;\n    }\n  };`;
       })
       .join("\n");
 
@@ -327,10 +328,10 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
       if (viewSpec.computed) {
         const viewCapitalized =
           viewName.charAt(0).toUpperCase() + viewName.slice(1);
-        const viewTypeName = `${modelName}${viewCapitalized}View`;
+        const rowTypeName = `${modelName}${viewCapitalized}Row`;
         for (const [fieldName, def] of Object.entries(viewSpec.computed)) {
           declLines.push(
-            generateComputedDecl(viewName, fieldName, def, viewTypeName),
+            generateComputedDecl(viewName, fieldName, def, rowTypeName),
           );
         }
       }
@@ -361,8 +362,8 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
       }
 
       const selectConstName = `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}${viewCapitalized}Select`;
-      const viewTypeName = `${modelName}${viewCapitalized}View`;
-      const mapperName = `to${modelName}${viewCapitalized}Dto`;
+      const rowTypeName = `${modelName}${viewCapitalized}Row`;
+      const viewClassName = `${modelName}${viewCapitalized}View`;
 
       const transforms = viewSpec.transforms ?? {};
       const computed = viewSpec.computed;
@@ -392,14 +393,21 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
       blocks.push(
         `export const ${selectConstName} = ${serializedSelect} as const satisfies Prisma.${modelName}Select;`,
         "",
-        `export type ${viewTypeName} = Prisma.${modelName}GetPayload<{`,
+        `export type ${rowTypeName} = Prisma.${modelName}GetPayload<{`,
         `  select: typeof ${selectConstName};`,
         `}>;`,
         "",
         `export type ${dtoTypeName} = ${dtoShape};`,
         "",
-        `export function ${mapperName}(v: ${viewTypeName}): ${dtoTypeName} {`,
-        `  return ${mapperBody};`,
+        `export class ${viewClassName} {`,
+        `  private constructor(private readonly row: ${rowTypeName}) {}`,
+        `  static fromPrismaValue(row: ${rowTypeName}): ${viewClassName} {`,
+        `    return new ${viewClassName}(row);`,
+        `  }`,
+        `  toDto(): ${dtoTypeName} {`,
+        `    const v = this.row;`,
+        `    return ${mapperBody};`,
+        `  }`,
         `}`,
         "",
       );

@@ -438,9 +438,9 @@ ${relationSetters.join("\n")}
       } else {
         allImports.push(
           `${modelCamel}${viewPascal}Select`,
+          `${model.name}${viewPascal}Row`,
           `${model.name}${viewPascal}View`,
           `${model.name}${viewPascal}Dto`,
-          `to${model.name}${viewPascal}Dto`,
         );
       }
     }
@@ -471,8 +471,8 @@ ${relationSetters.join("\n")}
       }
 
       const selectConst = `${modelCamel}${viewPascal}Select`;
-      const viewType = `${model.name}${viewPascal}View`;
-      const mapper = `to${model.name}${viewPascal}Dto`;
+      const rowType = `${model.name}${viewPascal}Row`;
+      const viewClass = `${model.name}${viewPascal}View`;
 
       if (idFields.length > 0) {
         const idField = idFields[0];
@@ -484,7 +484,7 @@ ${relationSetters.join("\n")}
         where: { ${idFieldName} },
         select: ${selectConst},
       });
-      return record ? ${mapper}(record as unknown as ${viewType}) : null;
+      return record ? ${viewClass}.fromPrismaValue(record as unknown as ${rowType}).toDto() : null;
     }`);
       }
 
@@ -500,7 +500,7 @@ ${relationSetters.join("\n")}
         orderBy: orderBy as Record<string, any>,
         select: ${selectConst},
       });
-      return records.map((r) => ${mapper}(r as unknown as ${viewType}));
+      return records.map((r) => ${viewClass}.fromPrismaValue(r as unknown as ${rowType}).toDto());
     }`);
 
       methods.push(`
@@ -524,7 +524,7 @@ ${relationSetters.join("\n")}
         this.delegate.count({ where: args?.where as Record<string, any> }),
       ]);
       return {
-        data: records.map((r) => ${mapper}(r as unknown as ${viewType})),
+        data: records.map((r) => ${viewClass}.fromPrismaValue(r as unknown as ${rowType}).toDto()),
         total,
         page,
         perPage,

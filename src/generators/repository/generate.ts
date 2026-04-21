@@ -49,7 +49,7 @@ export async function generate(options: GeneratorOptions) {
         specPath,
         schemaPath: options.schemaPath,
       });
-      transformer.setSpec({ spec });
+      transformer.setSpec({ spec: spec.views });
     }
 
     await transformer.transform();
