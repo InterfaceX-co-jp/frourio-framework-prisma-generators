@@ -12,6 +12,44 @@ function isStaticMap(v: TransformValue): v is TransformStaticMap {
 }
 
 /**
+ * Inject type annotations onto the first N parameters of a serialized
+ * function source. Handles arrow-without-parens (`v => ...`), arrow-with-parens
+ * (`(a, b) => ...`), and function expressions (`function name?(a, b) { ... }`).
+ * Unknown shapes are returned unchanged.
+ */
+function annotateParams(src: string, types: string[]): string {
+  if (types.length === 0) return src;
+  const singleArrow = /^(\s*)(async\s+)?([a-zA-Z_$][\w$]*)(\s*=>)/;
+  const m = src.match(singleArrow);
+  if (m) {
+    const [, ws, asyncKw, name, arrow] = m;
+    return (
+      `${ws}${asyncKw ?? ""}(${name}: ${types[0]})${arrow}` +
+      src.slice(m[0].length)
+    );
+  }
+  const parenStart =
+    /^(\s*)(async\s+)?(function\s*(?:[a-zA-Z_$][\w$]*)?\s*)?\(/;
+  const pm = src.match(parenStart);
+  if (!pm) return src;
+  const headLen = pm[0].length;
+  const rest = src.slice(headLen);
+  const closeIdx = rest.indexOf(")");
+  if (closeIdx < 0) return src;
+  const paramList = rest.slice(0, closeIdx);
+  const after = rest.slice(closeIdx);
+  const params = paramList.split(",").map((p) => p.trim()).filter(Boolean);
+  const annotated = params
+    .map((p, i) => {
+      if (i >= types.length) return p;
+      if (p.includes(":")) return p;
+      return `${p}: ${types[i]}`;
+    })
+    .join(", ");
+  return `${src.slice(0, headLen)}${annotated}${after}`;
+}
+
+/**
  * Derives the base const name for a transform.
  * viewName="detail", fieldPath="students.attendance"
  * → "_detailStudentsAttendance"
@@ -43,12 +81,13 @@ function generateTransformDecl(
   viewName: string,
   fieldPath: string,
   transform: TransformValue,
+  inputType: string,
 ): string {
   const base = transformBaseName(viewName, fieldPath);
   if (isStaticMap(transform)) {
     return `const ${base}Map = ${JSON.stringify(transform)} as const;`;
   }
-  return `const ${base}Transform = ${transform.toString()};`;
+  return `const ${base}Transform = ${annotateParams(transform.toString(), [inputType])};`;
 }
 
 function scalarToTs(field: ReadonlyDeep<DMMF.Field>): string {
@@ -72,6 +111,30 @@ function scalarToTs(field: ReadonlyDeep<DMMF.Field>): string {
     default:
       return "string";
   }
+}
+
+function resolveFieldType(
+  model: ReadonlyDeep<DMMF.Model>,
+  models: ReadonlyDeep<DMMF.Model[]>,
+  fieldPath: string,
+): string {
+  const segments = fieldPath.split(".");
+  let current: ReadonlyDeep<DMMF.Model> = model;
+  for (let i = 0; i < segments.length; i++) {
+    const field: ReadonlyDeep<DMMF.Field> | undefined = current.fields.find(
+      (fld) => fld.name === segments[i],
+    );
+    if (!field) return "unknown";
+    if (i === segments.length - 1) {
+      const base = scalarToTs(field);
+      const nullable = !field.isRequired ? " | null" : "";
+      return field.isList ? `Array<${base}>${nullable}` : `${base}${nullable}`;
+    }
+    const related = models.find((m) => m.name === field.type);
+    if (!related) return "unknown";
+    current = related;
+  }
+  return "unknown";
 }
 
 /** Extract annotation map or hide flag for a field, falling back to undefined. */
@@ -307,20 +370,30 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
     modelViews: ViewsSpec[string],
     dmmfModel: ReadonlyDeep<DMMF.Model>,
   ) {
-    const blocks: string[] = [`import type { Prisma } from "@prisma/client";`, ""];
+    const hasRawView = Object.values(modelViews).some(isRawViewSpec);
+    const prismaImport = hasRawView
+      ? `import type { Prisma, PrismaClient } from "@prisma/client";`
+      : `import type { Prisma } from "@prisma/client";`;
+    const blocks: string[] = [prismaImport, ""];
 
     // Emit transform and computed consts (grouped before all view blocks)
     const declLines: string[] = [];
     for (const [viewName, viewSpec] of Object.entries(modelViews)) {
       if (isRawViewSpec(viewSpec)) {
-        // Raw views: serialize raw and map functions
-        declLines.push(`const _${viewName}Raw = ${viewSpec.raw.toString()};`);
-        declLines.push(`const _${viewName}Map = ${viewSpec.map.toString()};`);
+        // Raw views: inject PrismaClient/unknown param annotations so the
+        // serialized bodies type-check without noImplicitAny errors.
+        declLines.push(
+          `const _${viewName}Raw = ${annotateParams(viewSpec.raw.toString(), ["PrismaClient", "unknown"])};`,
+        );
+        declLines.push(
+          `const _${viewName}Map = ${annotateParams(viewSpec.map.toString(), [`NonNullable<Awaited<ReturnType<typeof _${viewName}Raw>>>`])};`,
+        );
         continue;
       }
       if (viewSpec.transforms) {
         for (const [fieldPath, transform] of Object.entries(viewSpec.transforms)) {
-          declLines.push(generateTransformDecl(viewName, fieldPath, transform));
+          const inputType = resolveFieldType(dmmfModel, this._models, fieldPath);
+          declLines.push(generateTransformDecl(viewName, fieldPath, transform, inputType));
         }
       }
       // Annotation-level maps for fields in this view's select
@@ -352,7 +425,7 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
         blocks.push(
           `export type ${dtoTypeName} = ReturnType<typeof _${viewName}Map>;`,
           "",
-          `export async function find${modelName}${viewCapitalized}Raw(prisma: any, args: any): Promise<${dtoTypeName} | null> {`,
+          `export async function find${modelName}${viewCapitalized}Raw(prisma: PrismaClient, args: Parameters<typeof _${viewName}Raw>[1]): Promise<${dtoTypeName} | null> {`,
           `  const row = await _${viewName}Raw(prisma, args);`,
           `  return row ? _${viewName}Map(row) : null;`,
           `}`,
