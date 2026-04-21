@@ -5,7 +5,7 @@ import removeDir from "../utils/removeDir";
 import fs from "fs";
 import path from "path";
 import { loadSpec } from "../../spec/loader";
-import { ViewsTransformer } from "../views";
+import { generateViews } from "../views";
 
 export async function generate(options: GeneratorOptions) {
   try {
@@ -57,13 +57,11 @@ export async function generate(options: GeneratorOptions) {
 
     if (spec && options.generator.output) {
       const parsedPath = parseEnvValue(options.generator.output as EnvValue);
-      const viewsOutputPath = path.join(parsedPath, "..", "views");
-      const vt = new ViewsTransformer({
+      await generateViews({
         models,
         spec,
-        outputPath: viewsOutputPath,
+        modelOutputPath: parsedPath,
       });
-      await vt.transform();
     }
   } catch (e) {
     console.error(e);

@@ -33,9 +33,10 @@ function generateComputedDecl(
   viewName: string,
   fieldName: string,
   def: ComputedFieldDefinition,
+  viewTypeName: string,
 ): string {
   const base = computedBaseName(viewName, fieldName);
-  return `const ${base}Computed = ${def.from.toString()};`;
+  return `const ${base}Computed: (v: ${viewTypeName}) => ${def.type} = (${def.from.toString()});`;
 }
 
 function generateTransformDecl(
@@ -324,8 +325,13 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
       // Annotation-level maps for fields in this view's select
       this._emitAnnotationTransformDecls(viewName, viewSpec.select as Record<string, unknown>, dmmfModel, viewSpec.transforms ?? {}, declLines);
       if (viewSpec.computed) {
+        const viewCapitalized =
+          viewName.charAt(0).toUpperCase() + viewName.slice(1);
+        const viewTypeName = `${modelName}${viewCapitalized}View`;
         for (const [fieldName, def] of Object.entries(viewSpec.computed)) {
-          declLines.push(generateComputedDecl(viewName, fieldName, def));
+          declLines.push(
+            generateComputedDecl(viewName, fieldName, def, viewTypeName),
+          );
         }
       }
     }
