@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "es2019",
+    "lib": ["es2019", "DOM"],
+    "types": ["node"],
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "paths": {
+      "frourio-framework-prisma-generators": ["./src/spec/index.ts"],
+      "frourio-framework-prisma-generators/spec": ["./src/spec/index.ts"]
+    }
+  },
+  "include": [
+    "./prisma/dto.spec.ts",
+    "./prisma/__generated__/**/*.ts",
+    "./prisma/__generated__/views/**/*.ts"
+  ]
+}

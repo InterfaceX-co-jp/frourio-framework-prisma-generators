@@ -10,12 +10,14 @@ generator model {
   provider           = "node ./lib/generators/model/generator.js"
   output             = "./__generated__/model"
   additionalTypePath = "./@additionalType/index"
+  spec               = "./dto.config.ts"
 }
 
 generator repository {
   provider  = "node ./lib/generators/repository/generator.js"
   output    = "./__generated__/repository"
   modelPath = "./__generated__/model"
+  spec      = "./dto.config.ts"
 }
 
 /// @dto.profile(name: Public, pick: [id, email, name])
@@ -24,7 +26,7 @@ model User {
   id       Int     @id @default(autoincrement())
   email    String  @unique
   name     String?
-  password String  /// @dto(hidden: true)
+  password String /// @dto(hidden: true)
 
   posts Post[] /// @dto(nested: true)
   books Book[]
@@ -43,15 +45,22 @@ model UserNotification {
   initiatorUser   User? @relation(name: "initiatorUser", fields: [initiatorUserId], references: [id])
 }
 
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model Post {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        Int        @id @default(autoincrement())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   title     String
   content   String?
-  published Boolean  @default(false)
-  viewCount Int      @default(0)
-  author    User?    @relation(fields: [authorId], references: [id])
+  published Boolean    @default(false)
+  status    PostStatus @default(DRAFT)
+  viewCount Int        @default(0)
+  author    User?      @relation(fields: [authorId], references: [id])
   authorId  Int?
   likes     BigInt
   bytes     Bytes

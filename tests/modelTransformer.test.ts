@@ -116,7 +116,7 @@ describe("Model Transformer", () => {
       expect(content).toContain("boolean"); // Boolean
       expect(content).toContain("Date"); // DateTime in constructor
       expect(content).toContain("bigint"); // BigInt
-      expect(content).toContain("ArrayBuffer"); // Bytes
+      expect(content).toContain("Uint8Array"); // Bytes
 
       // DTO should serialize DateTime/BigInt/Bytes to string
       expect(content).toContain("toISOString()");

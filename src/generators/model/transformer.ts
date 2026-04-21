@@ -6,11 +6,13 @@ import { parseFieldDocumentation } from "./lib/json/parseFieldDocumentation";
 import { parseFieldDtoAnnotation } from "./lib/dto/parseFieldDtoAnnotation";
 import { parseModelDtoProfiles } from "./lib/dto/parseModelDtoProfiles";
 import type { DtoProfile } from "./lib/dto/types";
+import type { LoadedSpec } from "../../spec/types";
 
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
   private _additionalTypePath: string = "../../@additionalType/index";
+  private _spec: LoadedSpec | null = null;
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
     this._models = args.models;
@@ -22,6 +24,10 @@ export default class Transformer {
 
   setAdditionalTypePath(args: { path: string }) {
     this._additionalTypePath = args.path;
+  }
+
+  setSpec(args: { spec: LoadedSpec | null }) {
+    this._spec = args.spec;
   }
 
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
@@ -47,7 +53,7 @@ export default class Transformer {
     });
 
     const filteredImports = [...new Set(imports)].filter((i) => i);
-    
+
     if (filteredImports.length === 0) {
       return "";
     }
@@ -124,9 +130,13 @@ export default class Transformer {
 
   private getHiddenFieldNames(args: { model: PrismaDMMF.Model }): Set<string> {
     const hidden = new Set<string>();
+    const specFields = this._spec?.base[args.model.name]?.fields ?? {};
     for (const field of args.model.fields) {
       const annotation = parseFieldDtoAnnotation({ field });
-      if (annotation?.hidden) {
+      if (annotation?.hidden || annotation?.hide) {
+        hidden.add(field.name);
+      }
+      if (specFields[field.name]?.hide) {
         hidden.add(field.name);
       }
     }
@@ -135,15 +145,27 @@ export default class Transformer {
 
   private getNestedFieldNames(args: { model: PrismaDMMF.Model }): Set<string> {
     const nested = new Set<string>();
+    const specFields = this._spec?.base[args.model.name]?.fields ?? {};
     for (const field of args.model.fields) {
       if (field.relationName) {
         const annotation = parseFieldDtoAnnotation({ field });
-        if (annotation?.nested) {
+        if (annotation?.nested || specFields[field.name]?.nested) {
           nested.add(field.name);
         }
       }
     }
     return nested;
+  }
+
+  private getMergedProfiles(args: { model: PrismaDMMF.Model }): DtoProfile[] {
+    const dmmfProfiles = parseModelDtoProfiles({ model: args.model });
+    const specProfiles = this._spec?.base[args.model.name]?.profiles ?? [];
+    const merged = new Map<string, DtoProfile>();
+
+    for (const p of dmmfProfiles) merged.set(p.name, p);
+    for (const p of specProfiles) merged.set(p.name, p);
+
+    return [...merged.values()];
   }
 
   private getProfileFields(args: {
@@ -453,7 +475,9 @@ export default class Transformer {
       if (field.relationName) {
         field.relationFromFields?.forEach((relationField) => {
           const camelField = changeCase.camelCase(relationField);
-          const pattern = new RegExp(`(?<![a-zA-Z0-9])${camelField}(?![a-zA-Z0-9])`);
+          const pattern = new RegExp(
+            `(?<![a-zA-Z0-9])${camelField}(?![a-zA-Z0-9])`,
+          );
           mutatingList = mutatingList.filter((keyValue) => {
             return !pattern.test(keyValue);
           });
@@ -547,7 +571,9 @@ export default class Transformer {
     model: PrismaDMMF.Model;
     originalModelName: string;
   }) {
-    const originalModel = this._models.find((m) => m.name === args.originalModelName);
+    const originalModel = this._models.find(
+      (m) => m.name === args.originalModelName,
+    );
 
     const scalarAssignments = args.model.fields
       .filter((field) => !field.relationName)
@@ -605,7 +631,9 @@ export default class Transformer {
     if (args.field.type === "Json" && args.field.documentation) {
       const parsed = parseFieldDocumentation({ field: args.field });
       if (parsed?.type?.jsonType) {
-        return args.field.isList ? `${parsed.type.jsonType}[]` : parsed.type.jsonType;
+        return args.field.isList
+          ? `${parsed.type.jsonType}[]`
+          : parsed.type.jsonType;
       }
     }
     return this.mapPrismaValueType({ field: args.field });
@@ -680,7 +708,8 @@ export default class Transformer {
       }
 
       // Scalar fields
-      const hasDefault = (field as any).hasDefaultValue || (field as any).isUpdatedAt;
+      const hasDefault =
+        (field as any).hasDefaultValue || (field as any).isUpdatedAt;
       if (field.isRequired && !hasDefault) {
         return {
           validation: `if (this._args.${field.name} === undefined) throw new Error('${args.model.name}ModelBuilder: "${field.name}" is required');`,
@@ -690,7 +719,9 @@ export default class Transformer {
         // Required but has @default or @updatedAt — skip validation, pass as-is (may be undefined)
         return { assignment: `${field.name}: this._args.${field.name}` };
       } else {
-        return { assignment: `${field.name}: this._args.${field.name} ?? null` };
+        return {
+          assignment: `${field.name}: this._args.${field.name} ?? null`,
+        };
       }
     });
 
@@ -756,7 +787,9 @@ export default class Transformer {
       mutatingList: args.model.fields.map((f) => f.name),
     });
 
-    const comparisons = fields.map((name) => `this._${name} === other._${name}`);
+    const comparisons = fields.map(
+      (name) => `this._${name} === other._${name}`,
+    );
 
     return `equals(other: ${args.model.name}Model): boolean {
             return ${comparisons.join(" && ")};
@@ -815,7 +848,9 @@ export default class Transformer {
     };
   }
 
-  private generateNestedModelImports(args: { model: PrismaDMMF.Model }): string {
+  private generateNestedModelImports(args: {
+    model: PrismaDMMF.Model;
+  }): string {
     const nestedFields = this.getNestedFieldNames({ model: args.model });
     if (nestedFields.size === 0) return "";
 
@@ -951,7 +986,7 @@ export default class Transformer {
     for (const model of this._models) {
       modelNames.push(model.name);
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
-      const profiles = parseModelDtoProfiles({ model });
+      const profiles = this.getMergedProfiles({ model });
 
       const profileDtoTypes = profiles
         .map((profile) =>
@@ -1051,7 +1086,7 @@ export default class Transformer {
         case "BigInt":
           return "bigint";
         case "Bytes":
-          return "ArrayBuffer";
+          return "Uint8Array";
         case args.field.type:
           if (args.field.relationName) {
             return `${args.field.type}WithIncludes`;

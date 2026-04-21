@@ -2,6 +2,8 @@ import type { DMMF as PrismaDMMF } from "@prisma/generator-helper";
 import type { ReadonlyDeep } from "../utils/types";
 import { writeFileSafely } from "../utils/writeFileSafely";
 import * as changeCase from "change-case-all";
+import type { ViewsSpec } from "../../spec/types";
+import { isRawViewSpec } from "../../spec/types";
 
 interface UniqueComposite {
   name: string | null;
@@ -12,6 +14,7 @@ export class RepositoryTransformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]>;
   private readonly _outputPath: string;
   private readonly _modelImportPath: string;
+  private _spec: ViewsSpec | null = null;
 
   constructor(args: {
     models: ReadonlyDeep<PrismaDMMF.Model[]>;
@@ -21,6 +24,10 @@ export class RepositoryTransformer {
     this._models = args.models;
     this._outputPath = args.outputPath;
     this._modelImportPath = args.modelImportPath;
+  }
+
+  setSpec(args: { spec: ViewsSpec | null }) {
+    this._spec = args.spec;
   }
 
   // =========================================
@@ -410,6 +417,126 @@ ${relationSetters.join("\n")}
   }
 
   // =========================================
+  // View methods generation
+  // =========================================
+
+  private generateViewImports(model: ReadonlyDeep<PrismaDMMF.Model>): string {
+    if (!this._spec) return "";
+    const modelViews = this._spec[model.name];
+    if (!modelViews || Object.keys(modelViews).length === 0) return "";
+
+    const modelCamel = changeCase.camelCase(model.name);
+    const allImports: string[] = [];
+
+    for (const [viewName, viewSpec] of Object.entries(modelViews)) {
+      const viewPascal = changeCase.pascalCase(viewName);
+      if (isRawViewSpec(viewSpec)) {
+        allImports.push(
+          `${model.name}${viewPascal}Dto`,
+          `find${model.name}${viewPascal}Raw`,
+        );
+      } else {
+        allImports.push(
+          `${modelCamel}${viewPascal}Select`,
+          `${model.name}${viewPascal}Row`,
+          `${model.name}${viewPascal}View`,
+          `${model.name}${viewPascal}Dto`,
+        );
+      }
+    }
+
+    return `import { ${allImports.join(", ")} } from '../views/${model.name}.views';`;
+  }
+
+  private generateViewMethods(model: ReadonlyDeep<PrismaDMMF.Model>): string {
+    if (!this._spec) return "";
+    const modelViews = this._spec[model.name];
+    if (!modelViews || Object.keys(modelViews).length === 0) return "";
+
+    const modelCamel = changeCase.camelCase(model.name);
+    const idFields = this.getIdFields(model);
+    const methods: string[] = [];
+
+    for (const [viewName, viewSpec] of Object.entries(modelViews)) {
+      const viewPascal = changeCase.pascalCase(viewName);
+      const dtoType = `${model.name}${viewPascal}Dto`;
+
+      if (isRawViewSpec(viewSpec)) {
+        // Raw view: delegate to the generated helper function
+        methods.push(`
+    async find${viewPascal}Raw(prisma: any, args: any): Promise<${dtoType} | null> {
+      return find${model.name}${viewPascal}Raw(prisma, args);
+    }`);
+        continue;
+      }
+
+      const selectConst = `${modelCamel}${viewPascal}Select`;
+      const rowType = `${model.name}${viewPascal}Row`;
+      const viewClass = `${model.name}${viewPascal}View`;
+
+      if (idFields.length > 0) {
+        const idField = idFields[0];
+        const idFieldName = changeCase.camelCase(idField.name);
+        const idTsType = this.mapPrismaTypeToTs(idField);
+        methods.push(`
+    async findById${viewPascal}(${idFieldName}: ${idTsType}): Promise<${dtoType} | null> {
+      const record = await this.delegate.findUnique({
+        where: { ${idFieldName} },
+        select: ${selectConst},
+      });
+      return record ? ${viewClass}.fromPrismaValue(record as unknown as ${rowType}).toDto() : null;
+    }`);
+      }
+
+      methods.push(`
+    async findMany${viewPascal}(args?: { where?: ${model.name}WhereFilter; orderBy?: ${model.name}OrderBy | ${model.name}OrderBy[] }): Promise<${dtoType}[]> {
+      const orderBy = args?.orderBy
+        ? (Array.isArray(args.orderBy)
+            ? args.orderBy.map((o) => ({ [o.field]: o.direction }))
+            : { [args.orderBy.field]: args.orderBy.direction })
+        : undefined;
+      const records = await this.delegate.findMany({
+        where: args?.where as Record<string, any>,
+        orderBy: orderBy as Record<string, any>,
+        select: ${selectConst},
+      });
+      return records.map((r) => ${viewClass}.fromPrismaValue(r as unknown as ${rowType}).toDto());
+    }`);
+
+      methods.push(`
+    async paginate${viewPascal}(args?: { page?: number; perPage?: number; where?: ${model.name}WhereFilter; orderBy?: ${model.name}OrderBy | ${model.name}OrderBy[] }): Promise<PaginateResult<${dtoType}>> {
+      const page = args?.page ?? 1;
+      const perPage = args?.perPage ?? 20;
+      const skip = (page - 1) * perPage;
+      const orderBy = args?.orderBy
+        ? (Array.isArray(args.orderBy)
+            ? args.orderBy.map((o) => ({ [o.field]: o.direction }))
+            : { [args.orderBy.field]: args.orderBy.direction })
+        : undefined;
+      const [records, total] = await Promise.all([
+        this.delegate.findMany({
+          where: args?.where as Record<string, any>,
+          orderBy: orderBy as Record<string, any>,
+          select: ${selectConst},
+          skip,
+          take: perPage,
+        }),
+        this.delegate.count({ where: args?.where as Record<string, any> }),
+      ]);
+      return {
+        data: records.map((r) => ${viewClass}.fromPrismaValue(r as unknown as ${rowType}).toDto()),
+        total,
+        page,
+        perPage,
+        totalPages: Math.ceil(total / perPage),
+      };
+    }`);
+    }
+
+    return methods.join("\n");
+  }
+
+  // =========================================
   // Full repository file generation
   // =========================================
 
@@ -421,27 +548,23 @@ ${relationSetters.join("\n")}
     const compositeUniques = this.getCompositeUniques(model);
     const enumImports = this.getEnumImports(model);
 
-    // Generate findBy methods for @id fields
     const findByIdMethods = idFields.map((f) =>
       this.generateFindByFieldMethod(model, f),
     );
 
-    // Generate findBy methods for @unique fields
     const findByUniqueMethods = uniqueFields.map((f) =>
       this.generateFindByFieldMethod(model, f),
     );
 
-    // Generate findByXXXAndYYY methods for @@unique composites
     const findByCompositeMethods = compositeUniques.map((c) =>
       this.generateFindByCompositeMethod(model, c),
     );
 
-    // Generate paginate + cursor paginate
     const { typeDefinition: paginateTypes, method: paginateMethod, cursorMethod } =
       this.generatePaginateMethod(model);
 
-    // Generate toModel with relation support
     const toModelMethod = this.generateToModel(model);
+    const viewMethods = this.generateViewMethods(model);
 
     const allMethods = [
       ...findByIdMethods,
@@ -449,17 +572,20 @@ ${relationSetters.join("\n")}
       ...findByCompositeMethods,
       paginateMethod,
       cursorMethod,
+      viewMethods,
     ].join("\n");
 
-    // Build import for enums from @prisma/client
     const enumImportLine = enumImports.length > 0
       ? `import { ${enumImports.map((e) => `${e} as Prisma${e}`).join(", ")} } from '@prisma/client';`
       : "";
+
+    const viewImportLine = this.generateViewImports(model);
 
     return `
       import { ${model.name}Model } from '${this._modelImportPath}/${model.name}.model';
       import { BaseRepository, PaginateResult, CursorPaginateResult, FindOptions } from './BaseRepository';
       ${enumImportLine}
+      ${viewImportLine}
 
       ${paginateTypes}
 

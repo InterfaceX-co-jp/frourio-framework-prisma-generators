@@ -379,4 +379,126 @@ describe("Repository Transformer", () => {
       expect(content).toContain("...options");
     });
   });
+
+  describe("transform — view methods (spec)", () => {
+    const userModel = makeModel("User", [
+      makeField({ name: "id", type: "Int", isId: true }),
+      makeField({ name: "email", type: "String" }),
+      makeField({ name: "name", type: "String", isRequired: false }),
+    ]);
+
+    const spec = {
+      User: {
+        profile: {
+          select: { id: true, email: true, name: true },
+        },
+      },
+    };
+
+    it("generates findByIdProfile / findManyProfile / paginateProfile", async () => {
+      const t = new RepositoryTransformer({
+        models: [userModel],
+        outputPath: "/tmp/test-repo",
+        modelImportPath: "../model",
+      });
+      t.setSpec({ spec });
+      await t.transform();
+
+      const content = mockedWriteFileSafely.mock.calls[0][1] as string;
+      expect(content).toContain("async findByIdProfile(");
+      expect(content).toContain("async findManyProfile(");
+      expect(content).toContain("async paginateProfile(");
+    });
+
+    it("imports view symbols from ../views/User.views", async () => {
+      const t = new RepositoryTransformer({
+        models: [userModel],
+        outputPath: "/tmp/test-repo",
+        modelImportPath: "../model",
+      });
+      t.setSpec({ spec });
+      await t.transform();
+
+      const content = mockedWriteFileSafely.mock.calls[0][1] as string;
+      expect(content).toContain("from '../views/User.views'");
+      expect(content).toContain("userProfileSelect");
+      expect(content).toContain("UserProfileRow");
+      expect(content).toContain("UserProfileView");
+      expect(content).toContain("UserProfileDto");
+    });
+
+    it("findByIdProfile uses select const and view class", async () => {
+      const t = new RepositoryTransformer({
+        models: [userModel],
+        outputPath: "/tmp/test-repo",
+        modelImportPath: "../model",
+      });
+      t.setSpec({ spec });
+      await t.transform();
+
+      const content = mockedWriteFileSafely.mock.calls[0][1] as string;
+      expect(content).toContain("select: userProfileSelect");
+      expect(content).toContain("UserProfileView.fromPrismaValue(");
+      expect(content).toContain(").toDto()");
+      expect(content).toContain("Promise<UserProfileDto | null>");
+    });
+
+    it("paginateProfile returns PaginateResult<UserProfileDto>", async () => {
+      const t = new RepositoryTransformer({
+        models: [userModel],
+        outputPath: "/tmp/test-repo",
+        modelImportPath: "../model",
+      });
+      t.setSpec({ spec });
+      await t.transform();
+
+      const content = mockedWriteFileSafely.mock.calls[0][1] as string;
+      expect(content).toContain("Promise<PaginateResult<UserProfileDto>>");
+      expect(content).toContain("totalPages: Math.ceil(total / perPage)");
+    });
+
+    it("generates no view methods when spec has no entry for model", async () => {
+      const postModel = makeModel("Post", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "title", type: "String" }),
+      ]);
+
+      const t = new RepositoryTransformer({
+        models: [postModel],
+        outputPath: "/tmp/test-repo",
+        modelImportPath: "../model",
+      });
+      t.setSpec({ spec });
+      await t.transform();
+
+      const content = mockedWriteFileSafely.mock.calls[0][1] as string;
+      expect(content).not.toContain("findByIdProfile");
+      expect(content).not.toContain("from '../views/");
+    });
+
+    it("generates methods for multiple views", async () => {
+      const multiSpec = {
+        User: {
+          profile: { select: { id: true, name: true } },
+          list: { select: { id: true, email: true } },
+        },
+      };
+
+      const t = new RepositoryTransformer({
+        models: [userModel],
+        outputPath: "/tmp/test-repo",
+        modelImportPath: "../model",
+      });
+      t.setSpec({ spec: multiSpec });
+      await t.transform();
+
+      const content = mockedWriteFileSafely.mock.calls[0][1] as string;
+      expect(content).toContain("findByIdProfile");
+      expect(content).toContain("findManyProfile");
+      expect(content).toContain("paginateProfile");
+      expect(content).toContain("findByIdList");
+      expect(content).toContain("findManyList");
+      expect(content).toContain("paginateList");
+    });
+  });
 });

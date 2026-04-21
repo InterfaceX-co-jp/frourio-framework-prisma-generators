@@ -7,8 +7,19 @@
     "frourio-framework-prisma-repository-generator": "lib/generators/repository/generator.js"
   },
   "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./lib/spec/index.d.ts",
+      "default": "./lib/spec/index.js"
+    },
+    "./spec": {
+      "types": "./lib/spec/index.d.ts",
+      "default": "./lib/spec/index.js"
+    }
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "typecheck:generated": "tsc --project tsconfig.generated.json",
     "lint": "eslint src tests",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -38,6 +49,7 @@
     "@prisma/internals": "^7.2.0",
     "@types/node": ">=20.0.0",
     "change-case-all": "^2.1.0",
+    "jiti": "^2.4.2",
     "prettier": "^3.5.3"
   },
   "devDependencies": {
