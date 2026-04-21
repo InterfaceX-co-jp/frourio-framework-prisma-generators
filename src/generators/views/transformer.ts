@@ -380,10 +380,11 @@ export function defineViews<T extends TypedViewsSpec>(spec: T): T {
     const declLines: string[] = [];
     for (const [viewName, viewSpec] of Object.entries(modelViews)) {
       if (isRawViewSpec(viewSpec)) {
-        // Raw views: inject PrismaClient/unknown param annotations so the
-        // serialized bodies type-check without noImplicitAny errors.
+        // Raw views: inject PrismaClient for the client, any for args (the
+        // user-declared TArgs shape is lost by Function.prototype.toString).
+        // map's row param is typed off the raw's inferred return type.
         declLines.push(
-          `const _${viewName}Raw = ${annotateParams(viewSpec.raw.toString(), ["PrismaClient", "unknown"])};`,
+          `const _${viewName}Raw = ${annotateParams(viewSpec.raw.toString(), ["PrismaClient", "any"])};`,
         );
         declLines.push(
           `const _${viewName}Map = ${annotateParams(viewSpec.map.toString(), [`NonNullable<Awaited<ReturnType<typeof _${viewName}Raw>>>`])};`,
