@@ -3,6 +3,7 @@ import type {
   ModelDef,
   ModelBaseConfig,
   ModelViewsSpec,
+  FieldBaseConfig,
   TransformFn,
   TransformStaticMap,
   ComputedFieldDefinition,
@@ -15,6 +16,13 @@ type ModelSelect<TName extends Prisma.ModelName> = NonNullable<
 /** Scalar-only row payload for a given model. */
 type ModelScalars<TName extends Prisma.ModelName> =
   Prisma.TypeMap["model"][TName]["payload"]["scalars"];
+
+/** All field names (scalars + relation objects) for a given model. */
+type ModelFieldName<TName extends Prisma.ModelName> = Extract<
+  | keyof Prisma.TypeMap["model"][TName]["payload"]["scalars"]
+  | keyof Prisma.TypeMap["model"][TName]["payload"]["objects"],
+  string
+>;
 
 /**
  * Transform map typed per scalar field. Top-level keys are scalar field names
@@ -33,6 +41,19 @@ type TypedSelectViewSpec<TName extends Prisma.ModelName> = {
   computed?: Record<string, ComputedFieldDefinition<ModelScalars<TName>>>;
 };
 
+/** Per-model `profiles[]` entry with `pick`/`omit` typed to model field names. */
+export type TypedModelBaseProfileConfig<TName extends Prisma.ModelName> = {
+  name: string;
+  pick?: ModelFieldName<TName>[];
+  omit?: ModelFieldName<TName>[];
+};
+
+/** Per-model `base` config with `fields` keys typed to model field names. */
+export type TypedModelBaseConfig<TName extends Prisma.ModelName> = {
+  fields?: Partial<Record<ModelFieldName<TName>, FieldBaseConfig>>;
+  profiles?: TypedModelBaseProfileConfig<TName>[];
+};
+
 /**
  * Typed raw view spec. `prisma` is typed as `PrismaClient`; `TArgs` / `TRow` /
  * `TDto` are inferred from the user's `raw` and `map` definitions.
@@ -49,11 +70,11 @@ type TypedModelViewsSpec<TName extends Prisma.ModelName> = Record<
 
 export function defineModelDto<TName extends Prisma.ModelName>(
   name: TName,
-  config: { views?: TypedModelViewsSpec<TName>; base?: ModelBaseConfig },
+  config: { views?: TypedModelViewsSpec<TName>; base?: TypedModelBaseConfig<TName> },
 ): ModelDef<TName> {
   return {
     _modelName: name,
     _views: (config.views ?? {}) as ModelViewsSpec,
-    _base: config.base,
+    _base: config.base as ModelBaseConfig | undefined,
   };
 }
