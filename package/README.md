@@ -8,13 +8,14 @@ A Prisma generator that produces immutable, type-safe TypeScript model classes f
 - `toDto()` method for DTO conversion (DateTime to ISO string, Decimal to number, etc.)
 - `fromPrismaValue()` for bridging from Prisma Client results
 - **Builder pattern** for flexible construction, model extension, and test fixtures
-- Custom typing for `Json` fields (`@json` annotation)
-- Field hiding from DTO output (`@dto(hidden: true)` annotation)
-- Custom DTO profiles with pick/omit (`@dto.profile` annotation)
+- **`dto.config.ts` spec file (recommended)** — single source of truth for DTO shape: `hide` / `nested` / `profiles` / `jsonType` / per-view `select`, `transforms`, `computed`, `raw`. Preferred over `///` schema annotations.
+- Custom typing for `Json` fields (`@json` annotation, or `jsonType` in spec)
+- Field hiding from DTO output (`@dto(hidden: true)` annotation, or `hide: true` in spec)
+- Custom DTO profiles with pick/omit (`@dto.profile` annotation, or `profiles` in spec — **spec recommended**)
 - Auto-generated relation types (`WithIncludes`)
 - Automatic foreign key field exclusion when a relation field exists
 - **Repository generation** (beta) — auto-generated repository classes with `findBy`, `paginate`, and CRUD
-- **View-driven DTO generation** — declare `select`, `transforms`, `computed`, and `raw` views in a single spec file; the generator emits per-view types, classes, and repository methods
+- **View-driven DTO generation** — declare `select`, `transforms`, `computed`, and `raw` views in the spec; the generator emits per-view types, classes, and repository methods
 
 ## Requirements
 
@@ -186,7 +187,9 @@ export class UserRepository extends GeneratedUserRepository {
 
 ## View-Driven DTO Generation
 
-Declare view shapes, transforms, and computed fields in a single spec file. The model generator emits per-view types and a `View` class; the repository generator adds `findById{View}` / `findMany{View}` / `paginate{View}` methods. Base model configuration (`hide`, `nested`, `profiles`, etc.) can also be expressed in the spec as an alternative to `///` schema annotations.
+> **Recommended way to configure DTOs.** A single typed `dto.config.ts` is preferred over `///` schema annotations: it is type-checked against the Prisma schema, supports IDE autocomplete, allows arrow functions / static maps for `transforms` and `computed` (which annotations cannot express), and keeps DTO concerns out of the schema file. New projects should configure DTOs through the spec; existing `@dto(hidden: true)` / `@dto(nested: true)` / `@dto.profile` / `@json` annotations remain supported for backward compatibility.
+
+Declare view shapes, transforms, and computed fields in a single spec file. The model generator emits per-view types and a `View` class; the repository generator adds `findById{View}` / `findMany{View}` / `paginate{View}` methods. Base model configuration (`hide`, `nested`, `profiles`, `jsonType`) can also be expressed in the spec as the recommended alternative to `///` schema annotations.
 
 ### Enable
 
@@ -707,6 +710,8 @@ export class UserModel {
 
 ### `@dto.profile` - Custom DTO Profiles
 
+> **Recommended:** define profiles in `dto.config.ts` via `base.profiles` instead — it is type-checked, supports IDE autocomplete, and keeps DTO definitions out of the schema. See [View-Driven DTO Generation](#view-driven-dto-generation). The annotation form below is still supported for backward compatibility.
+
 Generate purpose-specific DTO types and methods. Control field inclusion with `pick` (include only specified fields) or `omit` (exclude specified fields).
 
 #### Syntax
@@ -1002,9 +1007,10 @@ Prisma schema からイミュータブルな TypeScript モデルクラスを自
 - `toDto()` メソッドによる DTO 変換（DateTime の ISO 文字列変換、Decimal の number 変換など）
 - `fromPrismaValue()` による Prisma Client からの変換
 - **Builder パターン** — 柔軟な構築、モデル拡張、テスト fixture 生成
-- `Json` 型フィールドのカスタム型指定（`@json` アノテーション）
-- フィールド非表示機能（`@dto(hidden: true)` アノテーション）
-- カスタム DTO プロファイル（`@dto.profile` アノテーション）
+- **`dto.config.ts` spec ファイル（推奨）** — DTO 形状の単一情報源: `hide` / `nested` / `profiles` / `jsonType` / view ごとの `select`・`transforms`・`computed`・`raw`。`///` スキーマアノテーションより優先推奨。
+- `Json` 型フィールドのカスタム型指定（`@json` アノテーション、または spec の `jsonType`）
+- フィールド非表示機能（`@dto(hidden: true)` アノテーション、または spec の `hide: true`）
+- カスタム DTO プロファイル（`@dto.profile` アノテーション、または spec の `profiles` — **spec 推奨**）
 - リレーションフィールドの自動型生成（`WithIncludes` 型）
 - 外部キーフィールドの自動除外（リレーションフィールドが存在する場合）
 - **リポジトリ生成**（ベータ） — `findBy`、`paginate`、CRUD 付きリポジトリクラスを自動生成
@@ -1180,7 +1186,9 @@ export class UserRepository extends GeneratedUserRepository {
 
 ## View 駆動 DTO 生成
 
-view の形状・transform・計算フィールドを単一 spec ファイルに宣言します。モデルジェネレーターが view ごとの型と `View` クラスを生成し、リポジトリジェネレーターが `findById{View}` / `findMany{View}` / `paginate{View}` メソッドを追加します。モデル全体のベース設定（`hide`・`nested`・`profiles` など）も spec で表現でき、`///` スキーマアノテーションの代替になります。
+> **DTO 設定の推奨方式。** 単一の型付き `dto.config.ts` を `///` スキーマアノテーションより推奨。Prisma スキーマに対して型チェックされ、IDE 補完が効き、`transforms`・`computed` でアロー関数や静的マップを使える（アノテーションでは表現不能）。DTO 関連設定をスキーマファイルから分離できる。新規プロジェクトは spec で DTO を設定すること。既存の `@dto(hidden: true)` / `@dto(nested: true)` / `@dto.profile` / `@json` アノテーションも後方互換のため引き続きサポート。
+
+view の形状・transform・計算フィールドを単一 spec ファイルに宣言します。モデルジェネレーターが view ごとの型と `View` クラスを生成し、リポジトリジェネレーターが `findById{View}` / `findMany{View}` / `paginate{View}` メソッドを追加します。モデル全体のベース設定（`hide`・`nested`・`profiles`・`jsonType`）も spec で表現でき、`///` スキーマアノテーションの推奨代替になります。
 
 ### 有効化
 
@@ -1698,6 +1706,8 @@ export class UserModel {
 ---
 
 ### `@dto.profile` - カスタム DTO プロファイル
+
+> **推奨:** プロファイルは `dto.config.ts` の `base.profiles` で定義する方を推奨。型チェック・IDE 補完が効き、DTO 定義をスキーマから分離できる。詳細は [View 駆動 DTO 生成](#view-駆動-dto-生成) 参照。以下のアノテーション形式も後方互換のため引き続きサポート。
 
 用途別に異なる DTO 型とメソッドを生成します。`pick`（指定フィールドのみ含める）または `omit`（指定フィールドを除外）で制御します。
 
