@@ -743,4 +743,154 @@ describe("Model Transformer", () => {
       expect(content).toContain("Object.assign(this._args, args)");
     });
   });
+
+  describe("transform — unknown field validation in pick/omit", () => {
+    it("throws an error when pick contains a field that does not exist on the model (via DMMF annotation)", async () => {
+      const model = makeModel(
+        "User",
+        [
+          makeField({ name: "id", type: "Int", isId: true }),
+          makeField({ name: "email", type: "String" }),
+        ],
+        {
+          // "deletedField" was removed from the Prisma model
+          documentation: "@dto.profile(name: Slim, pick: [id, email, deletedField])",
+        },
+      );
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+
+      await expect(t.transform()).rejects.toThrow(
+        'profile "Slim" on model "User": pick contains field(s) that do not exist: "deletedField"',
+      );
+    });
+
+    it("throws an error when omit contains a field that does not exist on the model (via DMMF annotation)", async () => {
+      const model = makeModel(
+        "User",
+        [
+          makeField({ name: "id", type: "Int", isId: true }),
+          makeField({ name: "email", type: "String" }),
+        ],
+        {
+          documentation: "@dto.profile(name: Admin, omit: [deletedSecret])",
+        },
+      );
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+
+      await expect(t.transform()).rejects.toThrow(
+        'profile "Admin" on model "User": omit contains field(s) that do not exist: "deletedSecret"',
+      );
+    });
+
+    it("throws an error when pick contains unknown fields (via spec)", async () => {
+      const model = makeModel("User", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "email", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            User: {
+              profiles: [
+                // "billingPostalCode" no longer exists in the model
+                { name: "Slim", pick: ["id", "email", "billingPostalCode"] },
+              ],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).rejects.toThrow(
+        'profile "Slim" on model "User": pick contains field(s) that do not exist: "billingPostalCode"',
+      );
+    });
+
+    it("throws an error listing all unknown fields when multiple are missing from pick", async () => {
+      const model = makeModel("User", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "email", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            User: {
+              profiles: [
+                { name: "Slim", pick: ["id", "removedA", "removedB"] },
+              ],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).rejects.toThrow(
+        '"removedA", "removedB"',
+      );
+    });
+
+    it("succeeds when all pick fields exist on the model", async () => {
+      const model = makeModel("User", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "email", type: "String" }),
+        makeField({ name: "name", type: "String", isRequired: false }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            User: {
+              profiles: [{ name: "Public", pick: ["id", "email"] }],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).resolves.not.toThrow();
+      const content = findModelContent("User.model.ts");
+      expect(content).toContain("export type UserPublicDto");
+    });
+
+    it("succeeds when all omit fields exist on the model", async () => {
+      const model = makeModel("User", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "email", type: "String" }),
+        makeField({ name: "password", type: "String" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            User: {
+              profiles: [{ name: "Public", omit: ["password"] }],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).resolves.not.toThrow();
+      const content = findModelContent("User.model.ts");
+      expect(content).toContain("export type UserPublicDto");
+    });
+  });
 });

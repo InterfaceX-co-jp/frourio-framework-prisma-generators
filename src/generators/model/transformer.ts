@@ -175,27 +175,27 @@ export default class Transformer {
     const fieldNames = new Set(args.model.fields.map((f) => f.name));
 
     if (args.profile.pick) {
-      const validPick = args.profile.pick.filter((name) => {
-        if (!fieldNames.has(name)) {
-          console.warn(
-            `[Frourio Framework] @dto.profile "${args.profile.name}": field "${name}" does not exist on model. Skipping.`,
-          );
-          return false;
-        }
-        return true;
-      });
-      return args.model.fields.filter((f) => validPick.includes(f.name));
+      const unknownPick = args.profile.pick.filter((name) => !fieldNames.has(name));
+      if (unknownPick.length > 0) {
+        throw new Error(
+          `[Frourio Framework] profile "${args.profile.name}" on model "${args.model.name}": ` +
+            `pick contains field(s) that do not exist: ${unknownPick.map((n) => `"${n}"`).join(", ")}. ` +
+            `Valid fields are: ${[...fieldNames].map((n) => `"${n}"`).join(", ")}.`,
+        );
+      }
+      return args.model.fields.filter((f) => args.profile.pick!.includes(f.name));
     }
 
     if (args.profile.omit) {
-      const omitSet = new Set(args.profile.omit);
-      for (const name of omitSet) {
-        if (!fieldNames.has(name)) {
-          console.warn(
-            `[Frourio Framework] @dto.profile "${args.profile.name}": field "${name}" does not exist on model. Skipping.`,
-          );
-        }
+      const unknownOmit = args.profile.omit.filter((name) => !fieldNames.has(name));
+      if (unknownOmit.length > 0) {
+        throw new Error(
+          `[Frourio Framework] profile "${args.profile.name}" on model "${args.model.name}": ` +
+            `omit contains field(s) that do not exist: ${unknownOmit.map((n) => `"${n}"`).join(", ")}. ` +
+            `Valid fields are: ${[...fieldNames].map((n) => `"${n}"`).join(", ")}.`,
+        );
       }
+      const omitSet = new Set(args.profile.omit);
       return args.model.fields.filter((f) => !omitSet.has(f.name));
     }
 
