@@ -46,6 +46,30 @@ export default registerModelDtos([
     },
   }),
 
+  defineModelDto("BankAccount", {
+    base: {
+      fields: {
+        bankInfo: { jsonType: "BankInfo" },
+      },
+    },
+  }),
+
+  defineModelDto("Order", {
+    base: {
+      fields: {
+        metadata: { jsonType: "SpecType" },
+      },
+    },
+  }),
+
+  defineModelDto("Company", {
+    base: {
+      fields: {
+        bankInfo: { jsonType: "BankInfo" },
+      },
+    },
+  }),
+
   defineModelDto("Post", {
     views: {
       // パターン6: 計算フィールド（computed）
