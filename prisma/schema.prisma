@@ -165,3 +165,27 @@ model DecimalField {
   requiredDecimal Decimal  @db.Decimal(12, 0)
   optionalDecimal Decimal? @db.Decimal(12, 0)
 }
+
+/// Bug 1 regression: Json field with non-@json documentation must not produce broken output
+model BugModel {
+  id      Int  @id @default(autoincrement())
+  payload Json /// some comment
+}
+
+/// Bug 2 regression: spec.jsonType (without @json annotation) should resolve the type
+model BankAccount {
+  id       Int  @id @default(autoincrement())
+  bankInfo Json
+}
+
+/// Bug 2 regression: spec.jsonType takes precedence over @json annotation
+model Order {
+  id       Int  @id @default(autoincrement())
+  metadata Json /// @json(type: [AnnotationType])
+}
+
+/// Bug 2 regression: spec.jsonType lookup works for snake_case Prisma field names
+model Company {
+  id        Int  @id @default(autoincrement())
+  bank_info Json
+}

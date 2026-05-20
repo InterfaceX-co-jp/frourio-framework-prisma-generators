@@ -13,6 +13,8 @@ export default class Transformer {
   private _outputPath: string = "./prisma/__generated__/models";
   private _additionalTypePath: string = "../../@additionalType/index";
   private _spec: LoadedSpec | null = null;
+  /** Set to the current model name at the start of each model's generation loop. */
+  private _currentModelName: string = "";
 
   constructor(args: { models: ReadonlyDeep<PrismaDMMF.Model[]> }) {
     this._models = args.models;
@@ -30,6 +32,27 @@ export default class Transformer {
     this._spec = args.spec;
   }
 
+  /**
+   * Resolves the TypeScript type for a Json field, consulting the spec first
+   * (via `fields.<name>.jsonType`) then falling back to the `@json(type: [T])`
+   * schema annotation.  Returns `undefined` when neither source provides a type.
+   *
+   * Spec takes precedence so users can override annotations without touching
+   * the Prisma schema file — consistent with how `hide` / `nested` / `profiles`
+   * work in the spec.
+   *
+   * NOTE: `_currentModelName` must be set before calling this method.
+   */
+  private getJsonTypeForField(field: PrismaDMMF.Field): string | undefined {
+    const camelFieldName = changeCase.camelCase(field.name);
+    const specJsonType =
+      this._spec?.base[this._currentModelName]?.fields?.[camelFieldName]
+        ?.jsonType;
+    const annotationJsonType = parseFieldDocumentation({ field })?.type
+      ?.jsonType;
+    return specJsonType ?? annotationJsonType;
+  }
+
   private generatePrismaRuntimeTypeImports(args: { model: PrismaDMMF.Model }) {
     // JsonValue is now accessed via Prisma.JsonValue in Prisma Client v7+
     return "";
@@ -41,14 +64,8 @@ export default class Transformer {
     }
 
     const imports = args.model.fields.map((field) => {
-      if (field.type === "Json" && field.documentation) {
-        const parsed = parseFieldDocumentation({
-          field,
-        });
-
-        if (parsed) {
-          return parsed.type?.jsonType;
-        }
+      if (field.type === "Json") {
+        return this.getJsonTypeForField(field);
       }
     });
 
@@ -113,15 +130,12 @@ export default class Transformer {
         : `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
     }
 
-    if (args.field.type === "Json" && args.field.documentation) {
-      const parsed = parseFieldDocumentation({
-        field: args.field,
-      });
-
-      if (parsed) {
+    if (args.field.type === "Json") {
+      const jsonType = this.getJsonTypeForField(args.field);
+      if (jsonType) {
         return args.field.isList
-          ? `${renderKey}: ${parsed.type?.jsonType}[]`
-          : `${renderKey}: ${args.overrideValue ? args.overrideValue : parsed.type?.jsonType}${requiredOrNullValue}`;
+          ? `${renderKey}: ${jsonType}[]`
+          : `${renderKey}: ${args.overrideValue ? args.overrideValue : jsonType}${requiredOrNullValue}`;
       }
     }
 
@@ -443,10 +457,10 @@ export default class Transformer {
         return `${camelName}: ${this.wrapNullable({ field, accessor, conversion: ".toNumber()" })}`;
       }
 
-      if (field.type === "Json" && field.documentation) {
-        const parsed = parseFieldDocumentation({ field });
-        if (parsed) {
-          return `${camelName}: ${accessor} as unknown as ${parsed.type?.jsonType}`;
+      if (field.type === "Json") {
+        const jsonType = this.getJsonTypeForField(field);
+        if (jsonType) {
+          return `${camelName}: ${accessor} as unknown as ${jsonType}`;
         }
       }
 
@@ -587,10 +601,10 @@ export default class Transformer {
           return `this._args.${field.name} = ${this.wrapNullable({ field, accessor, conversion: ".toNumber()" })};`;
         }
 
-        if (field.type === "Json" && field.documentation) {
-          const parsed = parseFieldDocumentation({ field });
-          if (parsed) {
-            return `this._args.${field.name} = ${accessor} as unknown as ${parsed.type?.jsonType};`;
+        if (field.type === "Json") {
+          const jsonType = this.getJsonTypeForField(field);
+          if (jsonType) {
+            return `this._args.${field.name} = ${accessor} as unknown as ${jsonType};`;
           }
         }
 
@@ -628,12 +642,10 @@ export default class Transformer {
   }
 
   private resolveFieldType(args: { field: PrismaDMMF.Field }): string {
-    if (args.field.type === "Json" && args.field.documentation) {
-      const parsed = parseFieldDocumentation({ field: args.field });
-      if (parsed?.type?.jsonType) {
-        return args.field.isList
-          ? `${parsed.type.jsonType}[]`
-          : parsed.type.jsonType;
+    if (args.field.type === "Json") {
+      const jsonType = this.getJsonTypeForField(args.field);
+      if (jsonType) {
+        return args.field.isList ? `${jsonType}[]` : jsonType;
       }
     }
     return this.mapPrismaValueType({ field: args.field });
@@ -985,6 +997,7 @@ export default class Transformer {
 
     for (const model of this._models) {
       modelNames.push(model.name);
+      this._currentModelName = model.name;
       const camelCasedModel = this._changeModelFieldsToCamelCase({ model });
       const profiles = this.getMergedProfiles({ model });
 
