@@ -230,6 +230,123 @@ describe("Model Transformer", () => {
       // Should import the additional type
       expect(content).toContain("import");
     });
+
+    it("does NOT generate broken code when Json field has non-@json documentation", async () => {
+      // Regression: parseFieldDocumentation returns a truthy object even when @json is absent,
+      // causing "as unknown as undefined" to appear in generated code.
+      const model = makeModel("BugModel", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({
+          name: "payload",
+          type: "Json",
+          documentation: "Some non-json comment",
+        }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("BugModel.model.ts");
+      expect(content).not.toContain("as unknown as undefined");
+      expect(content).not.toContain(": undefined");
+      // Field should fall back to Prisma.JsonValue
+      expect(content).toContain("Prisma.JsonValue");
+    });
+  });
+
+  describe("transform — spec jsonType", () => {
+    it("uses spec jsonType when no @json annotation is present", async () => {
+      const model = makeModel("BankAccount", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "bankInfo", type: "Json" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            BankAccount: {
+              fields: {
+                bankInfo: { jsonType: "BankInfo" },
+              },
+            },
+          },
+        },
+      });
+      await t.transform();
+
+      const content = findModelContent("BankAccount.model.ts");
+      // Type should be BankInfo, not Prisma.JsonValue
+      expect(content).toContain("BankInfo");
+      expect(content).not.toContain("Prisma.JsonValue");
+      // Should import BankInfo from additionalType path
+      expect(content).toMatch(/import\s*\{\s*BankInfo\s*\}/);
+    });
+
+    it("spec jsonType takes precedence over @json annotation", async () => {
+      // When both are specified, spec wins (consistent with other spec overrides).
+      const model = makeModel("Order", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({
+          name: "metadata",
+          type: "Json",
+          documentation: "@json(type: [AnnotationType])",
+        }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            Order: {
+              fields: {
+                metadata: { jsonType: "SpecType" },
+              },
+            },
+          },
+        },
+      });
+      await t.transform();
+
+      const content = findModelContent("Order.model.ts");
+      expect(content).toContain("SpecType");
+      expect(content).not.toContain("AnnotationType");
+    });
+
+    it("spec jsonType works for snake_case field names (camelCase lookup)", async () => {
+      // The spec uses camelCase keys; Prisma schema fields may be snake_case.
+      const model = makeModel("Company", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "bank_info", type: "Json" }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            Company: {
+              fields: {
+                bankInfo: { jsonType: "BankInfo" },
+              },
+            },
+          },
+        },
+      });
+      await t.transform();
+
+      const content = findModelContent("Company.model.ts");
+      expect(content).toContain("BankInfo");
+    });
   });
 
   describe("transform — @default / @updatedAt fields", () => {
