@@ -11,7 +11,7 @@ import type { LoadedSpec } from "../../spec/types";
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
   private _outputPath: string = "./prisma/__generated__/models";
-  private _additionalTypePath: string = "../../@additionalType/index";
+  private _additionalTypePath: string = "../../additionalType.config";
   private _spec: LoadedSpec | null = null;
   /** Set to the current model name at the start of each model's generation loop. */
   private _currentModelName: string = "";

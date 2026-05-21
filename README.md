@@ -35,7 +35,7 @@ Add the generator configuration to your `schema.prisma`:
 generator frourio_framework_prisma_model_generator {
     provider = "frourio-framework-prisma-model-generator"
     output   = "__generated__/models"
-    additionalTypePath = "./@additionalType/index" // Required when using @json annotation
+    additionalTypePath = "./additionalType.config" // Required when using @json annotation
     spec               = "./dto.config.ts"         // Optional — enables view-driven DTO generation
 }
 ```
@@ -543,7 +543,7 @@ Set the `additionalTypePath` to the import path of your custom types:
 generator frourio_framework_prisma_model_generator {
     provider           = "frourio-framework-prisma-model-generator"
     output             = "__generated__/models"
-    additionalTypePath = "./@additionalType/index"
+    additionalTypePath = "./additionalType.config"
 }
 ```
 
@@ -563,7 +563,7 @@ model JsonField {
 **2. Define your custom types:**
 
 ```ts
-// prisma/@additionalType/index.ts
+// prisma/additionalType.config.ts
 export type JsonObject = {
   foo: string;
   bar: number;
@@ -575,7 +575,7 @@ export type JsonArray = JsonObject[];
 **3. Generated output:**
 
 ```ts
-import { JsonObject, JsonArray } from '../../@additionalType/index';
+import { JsonObject, JsonArray } from '../../additionalType.config';
 
 export type JsonFieldModelDto = {
   id: number;
@@ -1034,7 +1034,7 @@ npm install -D frourio-framework-prisma-generators
 generator frourio_framework_prisma_model_generator {
     provider = "frourio-framework-prisma-model-generator"
     output   = "__generated__/models"
-    additionalTypePath = "./@additionalType/index" // Json 型フィールドに型を指定する場合に必要
+    additionalTypePath = "./additionalType.config" // Json 型フィールドに型を指定する場合に必要
     spec               = "./dto.config.ts"         // 任意 — View 駆動 DTO 生成を有効化
 }
 ```
@@ -1540,7 +1540,7 @@ fieldName Json /// @json(type: [TypeName])
 generator frourio_framework_prisma_model_generator {
     provider           = "frourio-framework-prisma-model-generator"
     output             = "__generated__/models"
-    additionalTypePath = "./@additionalType/index"
+    additionalTypePath = "./additionalType.config"
 }
 ```
 
@@ -1560,7 +1560,7 @@ model JsonField {
 **2. カスタム型を定義:**
 
 ```ts
-// prisma/@additionalType/index.ts
+// prisma/additionalType.config.ts
 export type JsonObject = {
   foo: string;
   bar: number;
@@ -1572,7 +1572,7 @@ export type JsonArray = JsonObject[];
 **3. 生成結果:**
 
 ```ts
-import { JsonObject, JsonArray } from '../../@additionalType/index';
+import { JsonObject, JsonArray } from '../../additionalType.config';
 
 export type JsonFieldModelDto = {
   id: number;
