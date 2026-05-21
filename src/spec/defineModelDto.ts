@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type { GetFindResult } from "@prisma/client/runtime/client";
 import type {
   ModelDef,
   ModelBaseConfig,
@@ -6,6 +7,7 @@ import type {
   FieldBaseConfig,
   TransformFn,
   TransformStaticMap,
+  TransformValue,
   ComputedFieldDefinition,
 } from "./types";
 
@@ -17,28 +19,39 @@ type ModelSelect<TName extends Prisma.ModelName> = NonNullable<
 type ModelScalars<TName extends Prisma.ModelName> =
   Prisma.TypeMap["model"][TName]["payload"]["scalars"];
 
-/** All field names (scalars + relation objects) for a given model. */
-type ModelFieldName<TName extends Prisma.ModelName> = Extract<
-  | keyof Prisma.TypeMap["model"][TName]["payload"]["scalars"]
-  | keyof Prisma.TypeMap["model"][TName]["payload"]["objects"],
+/** Relation field names (objects in Prisma payload) as string union. */
+type ModelRelationName<TName extends Prisma.ModelName> = Extract<
+  keyof Prisma.TypeMap["model"][TName]["payload"]["objects"],
   string
 >;
 
+/** All field names (scalars + relation objects) for a given model. */
+type ModelFieldName<TName extends Prisma.ModelName> =
+  | Extract<keyof ModelScalars<TName>, string>
+  | ModelRelationName<TName>;
+
 /**
- * Transform map typed per scalar field. Top-level keys are scalar field names
- * of the model, each with its value typed to the field's type. For nested
- * dot-paths (e.g. "students.attendance"), use a plain `Record<string, TransformValue>`.
+ * Row type narrowed by the user's `select` shape. Includes selected relations
+ * with their selected fields (recursively), so `computed.from` can access
+ * relation data type-safely.
+ */
+type RowFromSelect<TName extends Prisma.ModelName, TSelect> = GetFindResult<
+  Prisma.TypeMap["model"][TName]["payload"],
+  { select: TSelect },
+  {}
+>;
+
+/**
+ * Transform map typed per scalar field plus nested dot-paths under relations.
+ * Top-level keys are scalar field names of the model. Nested dot-paths
+ * (e.g. `"students.attendance"`) are accepted under any relation field name.
  */
 type TypedTransforms<TName extends Prisma.ModelName> = {
   [K in keyof ModelScalars<TName>]?:
     | TransformFn<ModelScalars<TName>[K], unknown>
     | TransformStaticMap;
-};
-
-type TypedSelectViewSpec<TName extends Prisma.ModelName> = {
-  select: ModelSelect<TName>;
-  transforms?: TypedTransforms<TName>;
-  computed?: Record<string, ComputedFieldDefinition<ModelScalars<TName>>>;
+} & {
+  [P in `${ModelRelationName<TName>}.${string}`]?: TransformValue;
 };
 
 /** Per-model `profiles[]` entry with `pick`/`omit` typed to model field names. */
@@ -63,14 +76,41 @@ export type TypedRawViewSpec<TArgs = unknown, TRow = unknown, TDto = unknown> = 
   map: (row: TRow) => TDto;
 };
 
-type TypedModelViewsSpec<TName extends Prisma.ModelName> = Record<
-  string,
-  TypedSelectViewSpec<TName> | TypedRawViewSpec<any, any, any>
->;
+/**
+ * Validates one view entry. For `select`-style views the user's select shape
+ * `S` is inferred and threaded into `computed.from`'s row type.
+ */
+type ValidateView<TName extends Prisma.ModelName, V> = V extends {
+  raw: any;
+  map: any;
+}
+  ? TypedRawViewSpec<any, any, any>
+  : V extends { select: infer S }
+    ? S extends ModelSelect<TName>
+      ? {
+          select: S;
+          transforms?: TypedTransforms<TName>;
+          computed?: Record<
+            string,
+            ComputedFieldDefinition<RowFromSelect<TName, S>>
+          >;
+        }
+      : never
+    : never;
 
-export function defineModelDto<TName extends Prisma.ModelName>(
+type ValidatedViews<TName extends Prisma.ModelName, TViews> = {
+  [K in keyof TViews]: ValidateView<TName, TViews[K]>;
+};
+
+export function defineModelDto<
+  TName extends Prisma.ModelName,
+  TViews extends Record<string, unknown> = {},
+>(
   name: TName,
-  config: { views?: TypedModelViewsSpec<TName>; base?: TypedModelBaseConfig<TName> },
+  config: {
+    views?: TViews & ValidatedViews<TName, TViews>;
+    base?: TypedModelBaseConfig<TName>;
+  },
 ): ModelDef<TName> {
   return {
     _modelName: name,
