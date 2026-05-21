@@ -3,3 +3,4 @@ lib
 !src/**/lib
 npm-debug.log*
 prisma/__generated__
+package
