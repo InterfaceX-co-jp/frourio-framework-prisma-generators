@@ -6,6 +6,7 @@ import type {
   FieldBaseConfig,
   TransformFn,
   TransformStaticMap,
+  TransformValue,
   ComputedFieldDefinition,
 } from "./types";
 
@@ -17,28 +18,28 @@ type ModelSelect<TName extends Prisma.ModelName> = NonNullable<
 type ModelScalars<TName extends Prisma.ModelName> =
   Prisma.TypeMap["model"][TName]["payload"]["scalars"];
 
-/** All field names (scalars + relation objects) for a given model. */
-type ModelFieldName<TName extends Prisma.ModelName> = Extract<
-  | keyof Prisma.TypeMap["model"][TName]["payload"]["scalars"]
-  | keyof Prisma.TypeMap["model"][TName]["payload"]["objects"],
+/** Relation field names (objects in Prisma payload) as string union. */
+type ModelRelationName<TName extends Prisma.ModelName> = Extract<
+  keyof Prisma.TypeMap["model"][TName]["payload"]["objects"],
   string
 >;
 
+/** All field names (scalars + relation objects) for a given model. */
+type ModelFieldName<TName extends Prisma.ModelName> =
+  | Extract<keyof ModelScalars<TName>, string>
+  | ModelRelationName<TName>;
+
 /**
- * Transform map typed per scalar field. Top-level keys are scalar field names
- * of the model, each with its value typed to the field's type. For nested
- * dot-paths (e.g. "students.attendance"), use a plain `Record<string, TransformValue>`.
+ * Transform map typed per scalar field plus nested dot-paths under relations.
+ * Top-level keys are scalar field names of the model. Nested dot-paths
+ * (e.g. `"students.attendance"`) are accepted under any relation field name.
  */
 type TypedTransforms<TName extends Prisma.ModelName> = {
   [K in keyof ModelScalars<TName>]?:
     | TransformFn<ModelScalars<TName>[K], unknown>
     | TransformStaticMap;
-};
-
-type TypedSelectViewSpec<TName extends Prisma.ModelName> = {
-  select: ModelSelect<TName>;
-  transforms?: TypedTransforms<TName>;
-  computed?: Record<string, ComputedFieldDefinition<ModelScalars<TName>>>;
+} & {
+  [P in `${ModelRelationName<TName>}.${string}`]?: TransformValue;
 };
 
 /** Per-model `profiles[]` entry with `pick`/`omit` typed to model field names. */
@@ -58,19 +59,36 @@ export type TypedModelBaseConfig<TName extends Prisma.ModelName> = {
  * Typed raw view spec. `prisma` is typed as `PrismaClient`; `TArgs` / `TRow` /
  * `TDto` are inferred from the user's `raw` and `map` definitions.
  */
-export type TypedRawViewSpec<TArgs = unknown, TRow = unknown, TDto = unknown> = {
+export type TypedRawViewSpec<
+  TArgs = unknown,
+  TRow = unknown,
+  TDto = unknown,
+> = {
   raw: (prisma: PrismaClient, args: TArgs) => Promise<TRow | null>;
   map: (row: TRow) => TDto;
 };
 
-type TypedModelViewsSpec<TName extends Prisma.ModelName> = Record<
-  string,
-  TypedSelectViewSpec<TName> | TypedRawViewSpec<any, any, any>
->;
+/**
+ * Select-based view spec. Provides contextual typing for `select` (validated
+ * against the model's Prisma select shape) and `transforms` (typed per scalar
+ * field). `computed.from` receives `any` — per-view row narrowing requires a
+ * dedicated helper (future enhancement).
+ */
+export type TypedSelectViewSpec<TName extends Prisma.ModelName> = {
+  select: ModelSelect<TName>;
+  transforms?: TypedTransforms<TName>;
+  computed?: Record<string, ComputedFieldDefinition<any>>;
+};
 
 export function defineModelDto<TName extends Prisma.ModelName>(
   name: TName,
-  config: { views?: TypedModelViewsSpec<TName>; base?: TypedModelBaseConfig<TName> },
+  config: {
+    views?: Record<
+      string,
+      TypedSelectViewSpec<TName> | TypedRawViewSpec<any, any, any>
+    >;
+    base?: TypedModelBaseConfig<TName>;
+  },
 ): ModelDef<TName> {
   return {
     _modelName: name,

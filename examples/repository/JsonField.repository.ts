@@ -4,6 +4,10 @@ import { JsonFieldModel } from "../../prisma/__generated__/model/JsonField.model
 export class JsonFieldRepository {
   private readonly _prisma: PrismaClient;
 
+  constructor(prisma: PrismaClient) {
+    this._prisma = prisma;
+  }
+
   async findById(args: { id: number }) {
     const jsonField = await this._prisma.jsonField.findUnique({
       where: { id: args.id },

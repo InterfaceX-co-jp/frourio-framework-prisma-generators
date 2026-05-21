@@ -65,7 +65,7 @@ export default registerModelDtos([
   defineModelDto("Company", {
     base: {
       fields: {
-        bankInfo: { jsonType: "BankInfo" },
+        bank_info: { jsonType: "BankInfo" },
       },
     },
   }),

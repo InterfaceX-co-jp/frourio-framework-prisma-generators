@@ -12,7 +12,7 @@
  *     jsonArray  Json /// @json(type: [JsonArray])
  *   }
  *
- * Additional type file (prisma/@additionalType/index.ts):
+ * Additional type file (prisma/additionalType.config.ts):
  *   export type JsonObject = { foo: string; bar: number };
  *   export type JsonArray = JsonObject[];
  */
