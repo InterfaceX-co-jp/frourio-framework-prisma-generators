@@ -25,7 +25,7 @@
     "test:watch": "vitest",
     "generate": "tsc && npm run prisma:generate",
     "prisma:generate": "npx prisma generate",
-    "check-uncommitted": "git diff-index --quiet HEAD --",
+    "check-uncommitted": "git update-index --refresh && git diff-index --quiet HEAD --",
     "package:publish": "npm update && npm run check-uncommitted && ./package.sh && cd package && npm publish"
   },
   "repository": {
