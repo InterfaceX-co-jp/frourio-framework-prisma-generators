@@ -90,14 +90,20 @@ function generateTransformDecl(
   return `const ${base}Transform = ${annotateParams(transform.toString(), [inputType])};`;
 }
 
-function scalarToTs(field: ReadonlyDeep<DMMF.Field>): string {
+function scalarToTs(
+  field: ReadonlyDeep<DMMF.Field>,
+  forTransform = false,
+): string {
   switch (field.type) {
     case "String":
       return "string";
     case "Int":
     case "Float":
-    case "Decimal":
       return "number";
+    case "Decimal":
+      // Transform receives the raw Prisma row value (Prisma.Decimal),
+      // but DTO output should be number.
+      return forTransform ? "Prisma.Decimal" : "number";
     case "Boolean":
       return "boolean";
     case "DateTime":
@@ -126,7 +132,7 @@ function resolveFieldType(
     );
     if (!field) return "unknown";
     if (i === segments.length - 1) {
-      const base = scalarToTs(field);
+      const base = scalarToTs(field, true);
       const nullable = !field.isRequired ? " | null" : "";
       return field.isList ? `Array<${base}>${nullable}` : `${base}${nullable}`;
     }

@@ -1,4 +1,5 @@
 import { registerModelDtos, defineModelDto } from "../src/spec";
+import type { Prisma } from "@prisma/client";
 
 export default registerModelDtos([
   // -------------------------------------------------------------------------
@@ -133,6 +134,23 @@ export default registerModelDtos([
           totalPosts: row._count.id,
           totalViews: row._sum.viewCount ?? 0,
         }),
+      },
+    },
+  }),
+
+  // Decimal transform テスト: transform 引数が Prisma.Decimal になることを確認
+  defineModelDto("DecimalField", {
+    views: {
+      api: {
+        select: {
+          id: true,
+          requiredDecimal: true,
+          optionalDecimal: true,
+        },
+        transforms: {
+          requiredDecimal: (v: Prisma.Decimal) => v.toNumber(),
+          optionalDecimal: (v: Prisma.Decimal | null) => v?.toNumber() ?? null,
+        },
       },
     },
   }),
