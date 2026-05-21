@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { GetFindResult } from "@prisma/client/runtime/client";
 import type {
   ModelDef,
   ModelBaseConfig,
@@ -31,17 +30,6 @@ type ModelFieldName<TName extends Prisma.ModelName> =
   | ModelRelationName<TName>;
 
 /**
- * Row type narrowed by the user's `select` shape. Includes selected relations
- * with their selected fields (recursively), so `computed.from` can access
- * relation data type-safely.
- */
-type RowFromSelect<TName extends Prisma.ModelName, TSelect> = GetFindResult<
-  Prisma.TypeMap["model"][TName]["payload"],
-  { select: TSelect },
-  {}
->;
-
-/**
  * Transform map typed per scalar field plus nested dot-paths under relations.
  * Top-level keys are scalar field names of the model. Nested dot-paths
  * (e.g. `"students.attendance"`) are accepted under any relation field name.
@@ -71,44 +59,34 @@ export type TypedModelBaseConfig<TName extends Prisma.ModelName> = {
  * Typed raw view spec. `prisma` is typed as `PrismaClient`; `TArgs` / `TRow` /
  * `TDto` are inferred from the user's `raw` and `map` definitions.
  */
-export type TypedRawViewSpec<TArgs = unknown, TRow = unknown, TDto = unknown> = {
+export type TypedRawViewSpec<
+  TArgs = unknown,
+  TRow = unknown,
+  TDto = unknown,
+> = {
   raw: (prisma: PrismaClient, args: TArgs) => Promise<TRow | null>;
   map: (row: TRow) => TDto;
 };
 
 /**
- * Validates one view entry. For `select`-style views the user's select shape
- * `S` is inferred and threaded into `computed.from`'s row type.
+ * Select-based view spec. Provides contextual typing for `select` (validated
+ * against the model's Prisma select shape) and `transforms` (typed per scalar
+ * field). `computed.from` receives `any` — per-view row narrowing requires a
+ * dedicated helper (future enhancement).
  */
-type ValidateView<TName extends Prisma.ModelName, V> = V extends {
-  raw: any;
-  map: any;
-}
-  ? TypedRawViewSpec<any, any, any>
-  : V extends { select: infer S }
-    ? S extends ModelSelect<TName>
-      ? {
-          select: S;
-          transforms?: TypedTransforms<TName>;
-          computed?: Record<
-            string,
-            ComputedFieldDefinition<RowFromSelect<TName, S>>
-          >;
-        }
-      : never
-    : never;
-
-type ValidatedViews<TName extends Prisma.ModelName, TViews> = {
-  [K in keyof TViews]: ValidateView<TName, TViews[K]>;
+export type TypedSelectViewSpec<TName extends Prisma.ModelName> = {
+  select: ModelSelect<TName>;
+  transforms?: TypedTransforms<TName>;
+  computed?: Record<string, ComputedFieldDefinition<any>>;
 };
 
-export function defineModelDto<
-  TName extends Prisma.ModelName,
-  TViews extends Record<string, unknown> = {},
->(
+export function defineModelDto<TName extends Prisma.ModelName>(
   name: TName,
   config: {
-    views?: TViews & ValidatedViews<TName, TViews>;
+    views?: Record<
+      string,
+      TypedSelectViewSpec<TName> | TypedRawViewSpec<any, any, any>
+    >;
     base?: TypedModelBaseConfig<TName>;
   },
 ): ModelDef<TName> {
