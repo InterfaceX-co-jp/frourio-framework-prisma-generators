@@ -12,10 +12,9 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "outDir": "./lib",
-    "rootDir": ".",
+    "rootDir": "./src",
     "skipLibCheck": true,
     "strict": true
   },
-  "include": ["./src/**/*.ts", "./prisma/**/*.ts"],
-  "exclude": ["./prisma/__generated__/**/*.ts"]
+  "include": ["./src/**/*.ts"]
 }

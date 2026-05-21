@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --project tsconfig.check.json",
     "typecheck:generated": "tsc --project tsconfig.generated.json",
     "lint": "eslint src tests",
     "test": "vitest run",
