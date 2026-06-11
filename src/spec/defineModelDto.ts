@@ -24,10 +24,15 @@ type ModelRelationName<TName extends Prisma.ModelName> = Extract<
   string
 >;
 
-/** All field names (scalars + relation objects) for a given model. */
+/** Converts snake_case Prisma field names to camelCase (generated model convention). */
+type CamelCaseFieldName<S extends string> = S extends `${infer Head}_${infer Tail}`
+  ? `${Head}${Capitalize<CamelCaseFieldName<Tail>>}`
+  : S;
+
+/** All field names (scalars + relation objects) in camelCase — dto.config.ts convention. */
 type ModelFieldName<TName extends Prisma.ModelName> =
-  | Extract<keyof ModelScalars<TName>, string>
-  | ModelRelationName<TName>;
+  | CamelCaseFieldName<Extract<keyof ModelScalars<TName>, string>>
+  | CamelCaseFieldName<ModelRelationName<TName>>;
 
 /**
  * Transform map typed per scalar field plus nested dot-paths under relations.

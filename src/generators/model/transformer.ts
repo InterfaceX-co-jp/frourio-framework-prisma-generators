@@ -7,6 +7,8 @@ import { parseFieldDtoAnnotation } from "./lib/dto/parseFieldDtoAnnotation";
 import { parseModelDtoProfiles } from "./lib/dto/parseModelDtoProfiles";
 import type { DtoProfile } from "./lib/dto/types";
 import type { LoadedSpec } from "../../spec/types";
+import type { FieldBaseConfig } from "../../spec/types";
+import { normalizeFieldName } from "../utils/normalizeFieldName";
 
 export default class Transformer {
   private readonly _models: ReadonlyDeep<PrismaDMMF.Model[]> = [];
@@ -142,6 +144,14 @@ export default class Transformer {
     return `${renderKey}: ${args.overrideValue ? args.overrideValue : this.mapPrismaValueType({ field: args.field })}${requiredOrNullValue}`;
   }
 
+  private resolveSpecFieldConfig(
+    specFields: Record<string, FieldBaseConfig>,
+    fieldName: string,
+  ): FieldBaseConfig | undefined {
+    const normalized = normalizeFieldName(fieldName);
+    return specFields[normalized] ?? specFields[fieldName];
+  }
+
   private getHiddenFieldNames(args: { model: PrismaDMMF.Model }): Set<string> {
     const hidden = new Set<string>();
     const specFields = this._spec?.base[args.model.name]?.fields ?? {};
@@ -150,7 +160,7 @@ export default class Transformer {
       if (annotation?.hidden || annotation?.hide) {
         hidden.add(field.name);
       }
-      if (specFields[field.name]?.hide) {
+      if (this.resolveSpecFieldConfig(specFields, field.name)?.hide) {
         hidden.add(field.name);
       }
     }
@@ -163,7 +173,10 @@ export default class Transformer {
     for (const field of args.model.fields) {
       if (field.relationName) {
         const annotation = parseFieldDtoAnnotation({ field });
-        if (annotation?.nested || specFields[field.name]?.nested) {
+        if (
+          annotation?.nested ||
+          this.resolveSpecFieldConfig(specFields, field.name)?.nested
+        ) {
           nested.add(field.name);
         }
       }
@@ -182,6 +195,10 @@ export default class Transformer {
     return [...merged.values()];
   }
 
+  private normalizeProfileFieldNames(names: string[]): string[] {
+    return names.map((name) => normalizeFieldName(name));
+  }
+
   private getProfileFields(args: {
     model: PrismaDMMF.Model;
     profile: DtoProfile;
@@ -189,7 +206,8 @@ export default class Transformer {
     const fieldNames = new Set(args.model.fields.map((f) => f.name));
 
     if (args.profile.pick) {
-      const unknownPick = args.profile.pick.filter((name) => !fieldNames.has(name));
+      const normalizedPick = this.normalizeProfileFieldNames(args.profile.pick);
+      const unknownPick = normalizedPick.filter((name) => !fieldNames.has(name));
       if (unknownPick.length > 0) {
         throw new Error(
           `[Frourio Framework] profile "${args.profile.name}" on model "${args.model.name}": ` +
@@ -197,11 +215,13 @@ export default class Transformer {
             `Valid fields are: ${[...fieldNames].map((n) => `"${n}"`).join(", ")}.`,
         );
       }
-      return args.model.fields.filter((f) => args.profile.pick!.includes(f.name));
+      const pickSet = new Set(normalizedPick);
+      return args.model.fields.filter((f) => pickSet.has(f.name));
     }
 
     if (args.profile.omit) {
-      const unknownOmit = args.profile.omit.filter((name) => !fieldNames.has(name));
+      const normalizedOmit = this.normalizeProfileFieldNames(args.profile.omit);
+      const unknownOmit = normalizedOmit.filter((name) => !fieldNames.has(name));
       if (unknownOmit.length > 0) {
         throw new Error(
           `[Frourio Framework] profile "${args.profile.name}" on model "${args.model.name}": ` +
@@ -209,7 +229,7 @@ export default class Transformer {
             `Valid fields are: ${[...fieldNames].map((n) => `"${n}"`).join(", ")}.`,
         );
       }
-      const omitSet = new Set(args.profile.omit);
+      const omitSet = new Set(normalizedOmit);
       return args.model.fields.filter((f) => !omitSet.has(f.name));
     }
 

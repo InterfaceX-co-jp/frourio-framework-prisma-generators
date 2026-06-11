@@ -1009,5 +1009,109 @@ describe("Model Transformer", () => {
       const content = findModelContent("User.model.ts");
       expect(content).toContain("export type UserPublicDto");
     });
+
+    it("normalizes snake_case omit fields from spec to camelCase model fields", async () => {
+      const model = makeModel("MCreator", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+        makeField({ name: "phone_number", type: "String", isRequired: false }),
+        makeField({ name: "myfans_id", type: "String", isRequired: false }),
+        makeField({ name: "avple_id", type: "String", isRequired: false }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            MCreator: {
+              fields: {
+                phoneNumber: { hide: true },
+                myfansId: { hide: true },
+                avpleId: { hide: true },
+              },
+              profiles: [
+                {
+                  name: "Owner",
+                  omit: ["myfansId", "avpleId"],
+                },
+                { name: "Admin", omit: [] },
+              ],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).resolves.not.toThrow();
+      const content = findModelContent("MCreator.model.ts");
+
+      const ownerDtoMatch = content.match(
+        /export type MCreatorOwnerDto = \{([^}]+)\}/,
+      );
+      expect(ownerDtoMatch).toBeTruthy();
+      expect(ownerDtoMatch![1]).toContain("name");
+      expect(ownerDtoMatch![1]).not.toContain("myfansId");
+      expect(ownerDtoMatch![1]).not.toContain("avpleId");
+      // hide applies to base toDto(), not profile DTOs unless explicitly omitted
+      expect(ownerDtoMatch![1]).toContain("phoneNumber");
+    });
+
+    it("normalizes snake_case pick/omit from @dto.profile schema annotations", async () => {
+      const model = makeModel(
+        "MCreator",
+        [
+          makeField({ name: "id", type: "Int", isId: true }),
+          makeField({ name: "name", type: "String" }),
+          makeField({ name: "myfans_id", type: "String", isRequired: false }),
+          makeField({ name: "avple_id", type: "String", isRequired: false }),
+        ],
+        {
+          documentation:
+            "@dto.profile(name: Owner, omit: [myfans_id, avple_id])",
+        },
+      );
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("MCreator.model.ts");
+      const ownerDtoMatch = content.match(
+        /export type MCreatorOwnerDto = \{([^}]+)\}/,
+      );
+      expect(ownerDtoMatch).toBeTruthy();
+      expect(ownerDtoMatch![1]).toContain("name");
+      expect(ownerDtoMatch![1]).not.toContain("myfansId");
+      expect(ownerDtoMatch![1]).not.toContain("avpleId");
+    });
+
+    it("accepts snake_case omit aliases in spec (backward compatibility)", async () => {
+      const model = makeModel("MCreator", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "myfans_id", type: "String", isRequired: false }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            MCreator: {
+              profiles: [{ name: "Public", omit: ["myfans_id"] }],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).resolves.not.toThrow();
+      const content = findModelContent("MCreator.model.ts");
+      const dtoMatch = content.match(/export type MCreatorPublicDto = \{([^}]+)\}/);
+      expect(dtoMatch).toBeTruthy();
+      expect(dtoMatch![1]).not.toContain("myfansId");
+    });
   });
 });
