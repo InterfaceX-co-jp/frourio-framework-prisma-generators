@@ -70,3 +70,14 @@ defineViews({
   // @ts-expect-error — "NonExistent" is not a Prisma model
   NonExistent: { all: { select: { id: true } } },
 });
+
+// ─── snake_case Prisma fields are referenced as camelCase in dto.config.ts ──
+defineModelDto("Company", {
+  base: {
+    fields: {
+      bankInfo: { jsonType: "BankInfo" },
+      // @ts-expect-error — use camelCase (bankInfo), not schema name (bank_info)
+      bank_info: { jsonType: "BankInfo" },
+    },
+  },
+});

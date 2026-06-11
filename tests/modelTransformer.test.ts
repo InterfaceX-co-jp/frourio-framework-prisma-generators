@@ -1009,5 +1009,109 @@ describe("Model Transformer", () => {
       const content = findModelContent("User.model.ts");
       expect(content).toContain("export type UserPublicDto");
     });
+
+    it("normalizes snake_case omit fields from spec to camelCase model fields", async () => {
+      const model = makeModel("Account", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "name", type: "String" }),
+        makeField({ name: "phone_number", type: "String", isRequired: false }),
+        makeField({ name: "external_id", type: "String", isRequired: false }),
+        makeField({ name: "internal_code", type: "String", isRequired: false }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            Account: {
+              fields: {
+                phoneNumber: { hide: true },
+                externalId: { hide: true },
+                internalCode: { hide: true },
+              },
+              profiles: [
+                {
+                  name: "Owner",
+                  omit: ["externalId", "internalCode"],
+                },
+                { name: "Admin", omit: [] },
+              ],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).resolves.not.toThrow();
+      const content = findModelContent("Account.model.ts");
+
+      const ownerDtoMatch = content.match(
+        /export type AccountOwnerDto = \{([^}]+)\}/,
+      );
+      expect(ownerDtoMatch).toBeTruthy();
+      expect(ownerDtoMatch![1]).toContain("name");
+      expect(ownerDtoMatch![1]).not.toContain("externalId");
+      expect(ownerDtoMatch![1]).not.toContain("internalCode");
+      // hide applies to base toDto(), not profile DTOs unless explicitly omitted
+      expect(ownerDtoMatch![1]).toContain("phoneNumber");
+    });
+
+    it("normalizes snake_case pick/omit from @dto.profile schema annotations", async () => {
+      const model = makeModel(
+        "Account",
+        [
+          makeField({ name: "id", type: "Int", isId: true }),
+          makeField({ name: "name", type: "String" }),
+          makeField({ name: "external_id", type: "String", isRequired: false }),
+          makeField({ name: "internal_code", type: "String", isRequired: false }),
+        ],
+        {
+          documentation:
+            "@dto.profile(name: Owner, omit: [external_id, internal_code])",
+        },
+      );
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      await t.transform();
+
+      const content = findModelContent("Account.model.ts");
+      const ownerDtoMatch = content.match(
+        /export type AccountOwnerDto = \{([^}]+)\}/,
+      );
+      expect(ownerDtoMatch).toBeTruthy();
+      expect(ownerDtoMatch![1]).toContain("name");
+      expect(ownerDtoMatch![1]).not.toContain("externalId");
+      expect(ownerDtoMatch![1]).not.toContain("internalCode");
+    });
+
+    it("accepts snake_case omit aliases in spec (backward compatibility)", async () => {
+      const model = makeModel("Account", [
+        makeField({ name: "id", type: "Int", isId: true }),
+        makeField({ name: "external_id", type: "String", isRequired: false }),
+      ]);
+
+      const t = new Transformer({ models: [model] });
+      t.setOutputPath({ path: "/tmp/test-output" });
+      t.setSpec({
+        spec: {
+          _type: "LoadedSpec",
+          views: {},
+          base: {
+            Account: {
+              profiles: [{ name: "Public", omit: ["external_id"] }],
+            },
+          },
+        },
+      });
+
+      await expect(t.transform()).resolves.not.toThrow();
+      const content = findModelContent("Account.model.ts");
+      const dtoMatch = content.match(/export type AccountPublicDto = \{([^}]+)\}/);
+      expect(dtoMatch).toBeTruthy();
+      expect(dtoMatch![1]).not.toContain("externalId");
+    });
   });
 });
